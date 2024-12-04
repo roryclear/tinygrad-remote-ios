@@ -51,25 +51,30 @@
 
 - (void)handleClient:(int)clientSocket {
     char buffer[1024];
-    ssize_t bytesRead = read(clientSocket, buffer, sizeof(buffer) - 1);
-    if (bytesRead > 0) {
-        buffer[bytesRead] = '\0';
-        NSString *request = [NSString stringWithUTF8String:buffer];
-        NSRange range = [request rangeOfString:@"GET /renderer "];
-        
-        if (range.location != NSNotFound) {
-            NSLog(@"/renderer");
-            NSString *responseBody = @"[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
-            NSString *responseHeader = [NSString stringWithFormat:
-                                        @"HTTP/1.1 200 OK\r\n"
-                                         "Content-Type: application/json\r\n"
-                                         "Content-Length: %lu\r\n"
-                                         "\r\n",
-                                        (unsigned long)[responseBody length]];
-            write(clientSocket, [responseHeader UTF8String], [responseHeader length]);
-            write(clientSocket, [responseBody UTF8String], [responseBody length]);
+    while (1) {
+        ssize_t bytesRead = read(clientSocket, buffer, sizeof(buffer) - 1);
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            NSString *request = [NSString stringWithUTF8String:buffer];
+            NSRange range = [request rangeOfString:@"GET /renderer "];
+            
+            if (range.location != NSNotFound) {
+                NSLog(@"/renderer");
+                NSString *responseBody = @"[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
+                NSString *responseHeader = [NSString stringWithFormat:
+                                            @"HTTP/1.1 200 OK\r\n"
+                                            "Content-Type: application/json\r\n"
+                                            "Content-Length: %lu\r\n"
+                                            "\r\n",
+                                            (unsigned long)[responseBody length]];
+                write(clientSocket, [responseHeader UTF8String], [responseHeader length]);
+                write(clientSocket, [responseBody UTF8String], [responseBody length]);
+            }
+        } else {
+            break;
         }
     }
+    close(clientSocket);
 }
 
 @end
