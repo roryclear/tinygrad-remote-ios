@@ -44,7 +44,7 @@
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
     CFRelease(source);
     
-    NSLog(@"HTTP Server started on port 8081.");
+    NSLog(@"HTTP Server started on port 6667.");
 }
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
@@ -61,20 +61,38 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     CFHTTPMessageRef httpRequest = CFHTTPMessageCreateEmpty(NULL, TRUE);
     CFHTTPMessageAppendBytes(httpRequest, CFDataGetBytePtr(dataRef), CFDataGetLength(dataRef));
     NSString *requestPath = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(httpRequest) path];
-
     if ([requestPath hasPrefix:@"/renderer"]) {
         char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
         send(handle, response, strlen(response), 0);
         close(handle);
         return;
     } else if ([requestPath hasPrefix:@"/batch"]) {
+        CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
+        NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
+        CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
+        while (bytes > 0 || CFDataGetLength(data) < size) {
+            if(bytes > 0) {
+                CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
+            }
+            bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
+        }
+        CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
+        const UInt8 *bytes = CFDataGetBytePtr(data);
+        CFIndex length = CFDataGetLength(data);
+
+        NSMutableString *output = [NSMutableString stringWithCapacity:length];
+        for (CFIndex i = 0; i < length; i++) {
+            [output appendFormat:@"%c", bytes[i]];
+        }
+
+        NSLog(@"%@", output);
         const char *header = "HTTP/1.1 200 OK\r\n"
                              "Content-Type: text/plain\r\n"
                              "Content-Length: 4\r\n"
                              "Connection: close\r\n\r\n";
-        const char body[] = {0x00, 'U', '$', 'G'}; // Raw binary data
-        send(handle, header, strlen(header), 0); // Send the header
-        send(handle, body, sizeof(body), 0);     // Send the body (4 bytes)
+        const char body[] = {0x00, 'U', '$', 'G'};
+        send(handle, header, strlen(header), 0);
+        send(handle, body, sizeof(body), 0);
         return;
     }
 }
