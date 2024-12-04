@@ -1,82 +1,81 @@
 #import "ViewController.h"
 #import <sys/socket.h>
 #import <netinet/in.h>
-#import <unistd.h>
+#import <Foundation/Foundation.h>
+
+@interface ViewController ()
+@property (nonatomic) CFSocketRef socket;
+@end
 
 @implementation ViewController
 
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [self startServer];
-    });
+    [self startHTTPServer];
 }
 
-- (void)startServer {
-    int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
 
-    struct sockaddr_in serverAddr;
-    memset(&serverAddr, 0, sizeof(serverAddr));
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(6667); //tinygrad port
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
-
-    if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Error: Unable to bind socket");
-        close(serverSocket);
+- (void)startHTTPServer {
+    self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
+    if (!self.socket) {
+        NSLog(@"Unable to create socket.");
         return;
     }
-
-    if (listen(serverSocket, 5) < 0) {
-        perror("Error: Unable to listen");
-        close(serverSocket);
-        return;
-    }
-
-    NSLog(@"Server running on port 6667");
     
-    while (1) {
-        struct sockaddr_in clientAddr;
-        socklen_t clientLen = sizeof(clientAddr);
-        int clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddr, &clientLen);
-        if (clientSocket < 0) {
-            perror("Error: Unable to accept connection");
-            continue;
-        }
-
-        [self handleClient:clientSocket];
-        close(clientSocket);
+    struct sockaddr_in address;
+    memset(&address, 0, sizeof(address));
+    address.sin_len = sizeof(address);
+    address.sin_family = AF_INET;
+    address.sin_port = htons(6667);  //use same port on tinygrad
+    address.sin_addr.s_addr = INADDR_ANY;
+    
+    CFDataRef addressData = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
+    if (CFSocketSetAddress(self.socket, addressData) != kCFSocketSuccess) {
+        NSLog(@"Failed to bind socket to address.");
+        CFRelease(self.socket);
+        self.socket = NULL;
+        exit(0); //TODO, add ui or retry
+        return;
     }
+    CFRelease(addressData);
+    
+    CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, self.socket, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+    CFRelease(source);
+    
+    NSLog(@"HTTP Server started on port 8081.");
 }
 
-- (void)handleClient:(int)clientSocket {
-    char buffer[1024];
-    while (1) {
-        ssize_t bytesRead = read(clientSocket, buffer, sizeof(buffer) - 1);
-        if (bytesRead > 0) {
-            buffer[bytesRead] = '\0';
-            NSString *request = [NSString stringWithUTF8String:buffer];
-            NSRange range = [request rangeOfString:@"GET /renderer "];
-            
-            if (range.location != NSNotFound) {
-                NSLog(@"/renderer");
-                NSString *responseBody = @"[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
-                NSString *responseHeader = [NSString stringWithFormat:
-                                            @"HTTP/1.1 200 OK\r\n"
-                                            "Content-Type: application/json\r\n"
-                                            "Content-Length: %lu\r\n"
-                                            "\r\n",
-                                            (unsigned long)[responseBody length]];
-                write(clientSocket, [responseHeader UTF8String], [responseHeader length]);
-                write(clientSocket, [responseBody UTF8String], [responseBody length]);
-            }
-        } else {
-            break;
-        }
-    }
-    close(clientSocket);
-}
+static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
+    NSLog(@"callback??");
+    CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
+    char buffer[1024 * 500] = {0};
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+    ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
+    buffer[bytes] = '\0';
+    CFDataRef dataRef = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes);
+    CFHTTPMessageRef httpRequest = CFHTTPMessageCreateEmpty(NULL, TRUE);
+    CFHTTPMessageAppendBytes(httpRequest, CFDataGetBytePtr(dataRef), CFDataGetLength(dataRef));
+    NSString *requestPath = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(httpRequest) path];
 
+    if ([requestPath hasPrefix:@"/renderer"]) {
+        char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
+        send(handle, response, strlen(response), 0);
+        close(handle);
+        return;
+    } else if ([requestPath hasPrefix:@"/batch"]) {
+        const char *header = "HTTP/1.1 200 OK\r\n"
+                             "Content-Type: text/plain\r\n"
+                             "Content-Length: 4\r\n"
+                             "Connection: close\r\n\r\n";
+        const char body[] = {0x00, 'U', '$', 'G'}; // Raw binary data
+        send(handle, header, strlen(header), 0); // Send the header
+        send(handle, body, sizeof(body), 0);     // Send the body (4 bytes)
+        return;
+    }
+}
 @end
-
-
