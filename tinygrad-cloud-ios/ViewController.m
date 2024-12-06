@@ -47,6 +47,46 @@
     NSLog(@"HTTP Server started on port 6667.");
 }
 
+static NSArray *extractElements(NSString *input) {
+    NSMutableArray *elements = [NSMutableArray array];
+    NSUInteger length = [input length];
+    NSUInteger start = 0;
+    NSUInteger depth = 0;
+    BOOL inElement = NO;
+    for (NSUInteger i = 0; i < length; i++) {
+        unichar c = [input characterAtIndex:i];
+        if (c == '[') {
+            if (!inElement) {
+                start = i + 1;
+            }
+            inElement = YES;
+            depth++;
+        } else if (c == '(') {
+            depth++;
+        } else if (c == ')') {
+            depth--;
+        } else if (c == ',' && depth == 1) {
+            if (inElement) {
+                NSRange range = NSMakeRange(start, i - start);
+                NSString *element = [input substringWithRange:range];
+                [elements addObject:element];
+                start = i + 2;
+            }
+        } else if (c == ']') {
+            if (inElement) {
+                depth--;
+                if (depth == 0) {
+                    NSRange range = NSMakeRange(start, i - start);
+                    NSString *element = [input substringWithRange:range];
+                    [elements addObject:element];
+                    break;
+                }
+            }
+        }
+    }
+    return elements;
+}
+
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     NSLog(@"callback??");
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
@@ -83,6 +123,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFIndex length = CFDataGetLength(data);
         
         //tinygrad decentralise???
+        NSData *rangeData;
         NSMutableDictionary *h = [[NSMutableDictionary alloc] init];
         NSInteger ptr = 0;
         while(ptr < length){
@@ -91,16 +132,21 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [slicedData getBytes:&datalen length:sizeof(datalen)];
             datalen = CFSwapInt64LittleToHost(datalen);
             NSLog(@"datalen: %llu", datalen);
-            const UInt8 *datahash_bytes = bytes + ptr; // Pointer to start of range
-            NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40]; // 32 bytes = 64 hex chars
-            for (int i = 0; i < 0x20; i++) [datahash appendFormat:@"%02x", datahash_bytes[i]]; // Append each byte as hex
+            const UInt8 *datahash_bytes = bytes + ptr;
+            NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
+            for (int i = 0; i < 0x20; i++) [datahash appendFormat:@"%02x", datahash_bytes[i]];
             NSLog(@"datahash =%@",datahash);
-            const UInt8 *subBytes = bytes + (ptr + 0x28); // Pointer to start of the range
-            NSData *rangeData = [NSData dataWithBytes:subBytes length:datalen]; // Create NSData for the range
-            h[datahash] = rangeData; NSLog(@"rangeData = %@", [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]); // Store and print as string
+            const UInt8 *subBytes = bytes + (ptr + 0x28);
+            rangeData = [NSData dataWithBytes:subBytes length:datalen];
+            h[datahash] = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]; NSLog(@"rangeData = %@", [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]);
             ptr += 0x28 + datalen;
         }
-        //
+        
+        NSString *input = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
+        NSArray *elements = extractElements(input);
+        NSLog(@"%@", elements);
+        NSLog(@"%@", h);
+
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
         NSLog(@"%@", output);
