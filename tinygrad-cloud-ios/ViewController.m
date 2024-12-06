@@ -77,14 +77,32 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
+            
+        
         const UInt8 *bytes = CFDataGetBytePtr(data);
         CFIndex length = CFDataGetLength(data);
-
-        NSMutableString *output = [NSMutableString stringWithCapacity:length];
-        for (CFIndex i = 0; i < length; i++) {
-            [output appendFormat:@"%c", bytes[i]];
+        
+        //tinygrad decentralise???
+        NSMutableDictionary *h = [[NSMutableDictionary alloc] init];
+        NSInteger ptr = 0;
+        while(ptr < length){
+            NSData *slicedData = [NSData dataWithBytes:bytes + ptr+0x20 length:0x28 - 0x20];
+            uint64_t datalen = 0;
+            [slicedData getBytes:&datalen length:sizeof(datalen)];
+            datalen = CFSwapInt64LittleToHost(datalen);
+            NSLog(@"datalen: %llu", datalen);
+            const UInt8 *datahash_bytes = bytes + ptr; // Pointer to start of range
+            NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40]; // 32 bytes = 64 hex chars
+            for (int i = 0; i < 0x20; i++) [datahash appendFormat:@"%02x", datahash_bytes[i]]; // Append each byte as hex
+            NSLog(@"datahash =%@",datahash);
+            const UInt8 *subBytes = bytes + (ptr + 0x28); // Pointer to start of the range
+            NSData *rangeData = [NSData dataWithBytes:subBytes length:datalen]; // Create NSData for the range
+            h[datahash] = rangeData; NSLog(@"rangeData = %@", [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]); // Store and print as string
+            ptr += 0x28 + datalen;
         }
-
+        //
+        
+        NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
         NSLog(@"%@", output);
         const char *header = "HTTP/1.1 200 OK\r\n"
                              "Content-Type: text/plain\r\n"
