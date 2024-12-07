@@ -48,7 +48,6 @@
 }
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
-    NSLog(@"callback??");
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
@@ -84,48 +83,44 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         //tinygrad decentralise???
         NSData *rangeData;
-        NSMutableDictionary *h = [[NSMutableDictionary alloc] init];
+        NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
+        NSMutableString *datahash;
         NSInteger ptr = 0;
         while(ptr < length){
             NSData *slicedData = [NSData dataWithBytes:bytes + ptr+0x20 length:0x28 - 0x20];
             uint64_t datalen = 0;
             [slicedData getBytes:&datalen length:sizeof(datalen)];
             datalen = CFSwapInt64LittleToHost(datalen);
-            NSLog(@"datalen: %llu", datalen);
             const UInt8 *datahash_bytes = bytes + ptr;
-            NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
+            datahash = [NSMutableString stringWithCapacity:0x40];
             for (int i = 0; i < 0x20; i++) [datahash appendFormat:@"%02x", datahash_bytes[i]];
-            NSLog(@"datahash =%@",datahash);
-            const UInt8 *subBytes = bytes + (ptr + 0x28);
-            rangeData = [NSData dataWithBytes:subBytes length:datalen];
-            h[datahash] = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]; NSLog(@"rangeData = %@", [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding]);
+            rangeData = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
+            _h[datahash] = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
             ptr += 0x28 + datalen;
         }
         
         NSString *input = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
-        NSLog(@"intput =%@\n", input);
-        
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
         input = [input stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"[]"]];
-        NSMutableArray *results = [NSMutableArray array];
+        NSMutableArray *_q = [NSMutableArray array];
         __block NSInteger lastIndex = 0;
         [regex enumerateMatchesInString:input options:0 range:NSMakeRange(0, input.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
             if (match.range.location > lastIndex) {
                 NSString *substring = [input substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)];
                 substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-                [results addObject:substring];
+                [_q addObject:substring];
             }
             lastIndex = match.range.location;
         }];
         if (lastIndex < input.length) {
             NSString *substring = [input substringFromIndex:lastIndex];
             substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-            [results addObject:substring];
+            [_q addObject:substring];
         }
-        NSLog(@"%@", results);
+        NSLog(@"%@", _q);
         
-        NSLog(@"%@", h);
+        NSLog(@"%@", _h);
 
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
