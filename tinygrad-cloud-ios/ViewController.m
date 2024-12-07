@@ -47,46 +47,6 @@
     NSLog(@"HTTP Server started on port 6667.");
 }
 
-static NSArray *extractElements(NSString *input) {
-    NSMutableArray *elements = [NSMutableArray array];
-    NSUInteger length = [input length];
-    NSUInteger start = 0;
-    NSUInteger depth = 0;
-    BOOL inElement = NO;
-    for (NSUInteger i = 0; i < length; i++) {
-        unichar c = [input characterAtIndex:i];
-        if (c == '[') {
-            if (!inElement) {
-                start = i + 1;
-            }
-            inElement = YES;
-            depth++;
-        } else if (c == '(') {
-            depth++;
-        } else if (c == ')') {
-            depth--;
-        } else if (c == ',' && depth == 1) {
-            if (inElement) {
-                NSRange range = NSMakeRange(start, i - start);
-                NSString *element = [input substringWithRange:range];
-                [elements addObject:element];
-                start = i + 2;
-            }
-        } else if (c == ']') {
-            if (inElement) {
-                depth--;
-                if (depth == 0) {
-                    NSRange range = NSMakeRange(start, i - start);
-                    NSString *element = [input substringWithRange:range];
-                    [elements addObject:element];
-                    break;
-                }
-            }
-        }
-    }
-    return elements;
-}
-
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     NSLog(@"callback??");
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
@@ -143,8 +103,28 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
         
         NSString *input = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
-        NSArray *elements = extractElements(input);
-        NSLog(@"%@", elements);
+        NSLog(@"intput =%@\n", input);
+        
+        NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
+        input = [input stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"[]"]];
+        NSMutableArray *results = [NSMutableArray array];
+        __block NSInteger lastIndex = 0;
+        [regex enumerateMatchesInString:input options:0 range:NSMakeRange(0, input.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
+            if (match.range.location > lastIndex) {
+                NSString *substring = [input substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)];
+                substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
+                [results addObject:substring];
+            }
+            lastIndex = match.range.location;
+        }];
+        if (lastIndex < input.length) {
+            NSString *substring = [input substringFromIndex:lastIndex];
+            substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
+            [results addObject:substring];
+        }
+        NSLog(@"%@", results);
+        
         NSLog(@"%@", h);
 
         
