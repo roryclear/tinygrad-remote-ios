@@ -2,6 +2,7 @@
 #import <sys/socket.h>
 #import <netinet/in.h>
 #import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
 
 @interface ViewController ()
 @property (nonatomic) CFSocketRef socket;
@@ -9,8 +10,13 @@
 
 @implementation ViewController
 
+id<MTLDevice> device;
+NSMutableDictionary<NSString *, id> *objects;
 
 - (void)viewDidLoad {
+    objects = [[NSMutableDictionary alloc] init];
+    device = MTLCreateSystemDefaultDevice();
+    [objects setObject: device forKey:@"d"];
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -119,9 +125,36 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [_q addObject:substring];
         }
         NSLog(@"%@", _q);
-        
         NSLog(@"%@", _h);
-
+        
+        for (NSString *x in _q) {
+            if ([x hasPrefix:@"BufferAlloc"]) {
+                NSLog(@"BufferAlloc");
+            } else if ([x hasPrefix:@"BufferFree"]) {
+                NSLog(@"BufferFree");
+            } else if ([x hasPrefix:@"CopyIn"]) {
+                NSLog(@"CopyIn");
+            } else if ([x hasPrefix:@"CopyOut"]) {
+                NSLog(@"CopyOut");
+            } else if ([x hasPrefix:@"ProgramAlloc"]) {
+                NSLog(@"ProgramAlloc");
+                NSString *pattern = @"name='([^']+)'";
+                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *name = [x substringWithRange:range];
+                pattern = @"datahash='([^']+)'";
+                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *datahash = [x substringWithRange:range];
+                NSString *prg = _h[datahash];
+                NSLog(@"name = %@",name);
+                NSLog(@"prg = %@",prg);
+            } else if ([x hasPrefix:@"ProgramFree"]) {
+                NSLog(@"ProgramFree");
+            } else if ([x hasPrefix:@"ProgramExec"]) {
+                NSLog(@"ProgramExec");
+            } else {
+                NSLog(@"No opp found");
+            }
+        }
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
         NSLog(@"%@", output);
