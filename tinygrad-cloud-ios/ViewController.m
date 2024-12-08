@@ -12,11 +12,12 @@
 
 id<MTLDevice> device;
 NSMutableDictionary<NSString *, id> *objects;
+NSMutableDictionary<NSString *, id> *buffers;
 
 - (void)viewDidLoad {
     objects = [[NSMutableDictionary alloc] init];
+    buffers = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
-    //[objects setObject: device forKey:@"d"];
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -124,12 +125,20 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
             [_q addObject:substring];
         }
-        NSLog(@"%@", _q);
-        NSLog(@"%@", _h);
+        //NSLog(@"%@", _q);
+        //NSLog(@"%@", _h);
         
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
                 NSLog(@"BufferAlloc");
+                NSString *pattern = @"buffer_num=(\\d+)";
+                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *buffer_num = [x substringWithRange:range];
+                pattern = @"size=(\\d+)";
+                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                int size = [[x substringWithRange:range] intValue];
+                id<MTLBuffer> buffer = [device newBufferWithLength:size options:MTLResourceStorageModeShared];
+                [buffers setObject:buffer forKey:buffer_num];
             } else if ([x hasPrefix:@"BufferFree"]) {
                 NSLog(@"BufferFree");
             } else if ([x hasPrefix:@"CopyIn"]) {
@@ -160,10 +169,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                                                       options:options
                                                                    reflection:&reflection
                                                                         error:&error];
-                
                 [objects setObject:pipeline_state forKey:@[name,datahash]];
-                NSLog(@"name = %@",name);
-                NSLog(@"prg = %@",prg);
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
