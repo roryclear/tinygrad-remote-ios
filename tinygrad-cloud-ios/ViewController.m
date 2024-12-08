@@ -145,6 +145,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"CopyIn");
             } else if ([x hasPrefix:@"CopyOut"]) {
                 NSLog(@"CopyOut");
+                const char *header = "HTTP/1.1 200 OK\r\n"
+                                     "Content-Type: text/plain\r\n"
+                                     "Content-Length: 4\r\n"
+                                     "Connection: close\r\n\r\n";
+                const char body[] = {0x00, 'U', '$', 'G'}; //todo
+                send(handle, header, strlen(header), 0);
+                send(handle, body, sizeof(body), 0);
+                return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
                 NSString *pattern = @"name='([^']+)'";
@@ -154,7 +162,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
                 NSString *prg = _h[datahash];
-                
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
@@ -181,14 +188,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
         NSLog(@"%@", output);
-        const char *header = "HTTP/1.1 200 OK\r\n"
-                             "Content-Type: text/plain\r\n"
-                             "Content-Length: 4\r\n"
-                             "Connection: close\r\n\r\n";
-        const char body[] = {0x00, 'U', '$', 'G'};
-        send(handle, header, strlen(header), 0);
-        send(handle, body, sizeof(body), 0);
-        return;
+        return; //todo, response if not copyout at the end?
     }
 }
 @end
