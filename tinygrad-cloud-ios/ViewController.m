@@ -16,7 +16,7 @@ NSMutableDictionary<NSString *, id> *objects;
 - (void)viewDidLoad {
     objects = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
-    [objects setObject: device forKey:@"d"];
+    //[objects setObject: device forKey:@"d"];
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -145,6 +145,23 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
                 NSString *prg = _h[datahash];
+                
+                NSError *error = nil;
+                id<MTLLibrary> library = [device newLibraryWithSource:prg
+                                                               options:nil
+                                                                 error:&error];
+                id<MTLFunction> func = [library newFunctionWithName:name];
+                MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
+                descriptor.computeFunction = func;
+                descriptor.supportIndirectCommandBuffers = YES;
+                MTLPipelineOption options = MTLPipelineOptionNone;
+                MTLAutoreleasedComputePipelineReflection *reflection = nil;
+                id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
+                                                                      options:options
+                                                                   reflection:&reflection
+                                                                        error:&error];
+                
+                [objects setObject:pipeline_state forKey:@[name,datahash]];
                 NSLog(@"name = %@",name);
                 NSLog(@"prg = %@",prg);
             } else if ([x hasPrefix:@"ProgramFree"]) {
@@ -152,7 +169,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 NSLog(@"ProgramExec");
             } else {
-                NSLog(@"No opp found");
+                NSLog(@"No op found");
             }
         }
         
