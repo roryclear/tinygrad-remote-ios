@@ -104,21 +104,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             for (int i = 0; i < 0x20; i++) {
                 [datahash appendFormat:@"%02x", datahash_bytes[i]];
             }
-            NSLog(@"hash and len = %@ %llu",datahash,datalen);
             rangeData = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
             NSString *stringData = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
 
             
             if ([stringData isKindOfClass:[NSString class]] && ([stringData hasPrefix:@"#include <metal_stdlib>"] || [stringData hasPrefix:@"["])) { //todo, store both cases as data and convert later
                 _h[datahash] = stringData;
-                NSLog(@"string -> %@.", stringData);
             } else {
                 const unsigned char *buffer = (const unsigned char *)[rangeData bytes];
                 NSMutableString *hexString = [NSMutableString stringWithCapacity:rangeData.length * 2];
                 for (int i = 0; i < rangeData.length; ++i) {
                     [hexString appendFormat:@"%02x", buffer[i]];
                 }
-                NSLog(@"Data -> %@", hexString);
                 _h[datahash] = rangeData;
             }
             ptr += 0x28 + datalen;
@@ -174,28 +171,21 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [buffers setObject:buffer forKey:buffer_num];
             } else if ([x hasPrefix:@"BufferFree"]) {
                 NSLog(@"BufferFree");
+                NSString *pattern = @"buffer_num=(\\d+)";
+                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *buffer_num = [x substringWithRange:range];
+                [buffers removeObjectForKey: buffer_num];
             } else if ([x hasPrefix:@"CopyIn"]) {
                 NSLog(@"got CopyIn");
-                NSLog(@"%@",x);
                 NSString *pattern = @"buffer_num=(\\d+)";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *buffer_num = [x substringWithRange:range];
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
-                
-                // Assuming buffers is a dictionary with MTLBuffer objects and buffer_num is a valid key
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 NSData *data = objects[datahash];
                 memcpy(buffer.contents, data.bytes, data.length);
-
-                
-                NSLog(@"datahash = %@",datahash);
-                NSLog(@"_h = %@",_h);
-                NSLog(@"_q = %@",_q);
-                
             } else if ([x hasPrefix:@"CopyOut"]) {
-                NSLog(@"CopyOut");
-                NSLog(@"%@",x);
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
@@ -211,6 +201,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
+                
+                const uint8_t *byteData = (const uint8_t *)rawData;
+
+                NSLog(@"Raw data contents (in bytes):");
+                for (size_t i = 0; i < bufferSize; i++) {
+                    printf("%02x ", byteData[i]);  // Print each byte as a 2-digit hex number
+                }
+                
                 char responseHeader[256];
                 snprintf(responseHeader, sizeof(responseHeader),
                          "HTTP/1.1 200 OK\r\n"
@@ -222,7 +220,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
-                NSLog(@"%@",x);
                 NSString *pattern = @"name='([^']+)'";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *name = [x substringWithRange:range];
@@ -230,6 +227,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
                 NSString *prg = _h[datahash];
+                NSLog(@"%@",prg);
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
@@ -284,26 +282,55 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     }
                 }
                 
+                pattern = @"vals=\\(([^)]+)\\)";
+                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+                range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *valsContents = [x substringWithRange:range];
+                NSArray<NSString *> *valsRawValues = [valsContents componentsSeparatedByString:@","];
+                NSMutableArray<NSNumber *> *valsValues = [NSMutableArray array];
+
+                for (NSString *value in valsRawValues) {
+                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (trimmedValue.length > 0) {
+                        NSInteger intValue = [trimmedValue integerValue]; // Convert string to integer
+                        [valsValues addObject:@(intValue)]; // Add as NSNumber
+                    }
+                }
+                
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
                 for(int i = 0; i < bufsValues.count; i++){
                     [computeEncoder setBuffer:buffers[bufsValues[i]] offset:0 atIndex:i];
                 }
+                for(int i = 0; i < valsValues.count; i++){
+                    NSMutableData *data = [NSMutableData dataWithCapacity:valsValues.count * sizeof(NSInteger)];
+                    NSInteger value = [valsValues[i] integerValue];
+                    [data appendBytes:&value length:sizeof(NSInteger)];
+                    [computeEncoder setBytes:data.bytes length:data.length atIndex:i+bufsValues.count];
+                }
                 MTLSize gridSize = MTLSizeMake(gx,gy,gz);
                 MTLSize threadGroupSize = MTLSizeMake(lx, ly, lz);
                 [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
+                [commandBuffer waitUntilCompleted];
                 [mtl_buffers_in_flight addObject: commandBuffer];
             } else {
-                NSLog(@"No op found");
+                NSLog(@"No op found %@",x);
             }
         }
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
         NSLog(@"%@", output);
-        return; //todo, response if not copyout at the end?
+        const char *header = "HTTP/1.1 200 OK\r\n"
+                             "Content-Type: text/plain\r\n"
+                             "Content-Length: 4\r\n"
+                             "Connection: close\r\n\r\n";
+        const char body[] = {0x00, 'U', '$', 'G'}; //todo
+        send(handle, header, strlen(header), 0);
+        send(handle, body, sizeof(body), 0);
+        return;
     }
 }
 @end
