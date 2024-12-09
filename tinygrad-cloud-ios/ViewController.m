@@ -292,8 +292,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
                 MTLSize gridSize = MTLSizeMake(gx,gy,gz);
                 MTLSize threadGroupSize = MTLSizeMake(lx, ly, lz);
-                [computeEncoder dispatchThreads:gridSize
-                          threadsPerThreadgroup:threadGroupSize];
+                [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
                 [mtl_buffers_in_flight addObject: commandBuffer];
