@@ -154,9 +154,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
 
         //NSLog(@"_q = %@", _q);
-
-        //NSLog(@"%@", _q);
-        //NSLog(@"%@", _h);
         
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
@@ -176,14 +173,15 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSString *buffer_num = [x substringWithRange:range];
                 [buffers removeObjectForKey: buffer_num];
             } else if ([x hasPrefix:@"CopyIn"]) {
-                NSLog(@"got CopyIn");
+                NSLog(@"CopyIn");
                 NSString *pattern = @"buffer_num=(\\d+)";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *buffer_num = [x substringWithRange:range];
+                pattern = @"datahash='([^']+)'";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
                 id<MTLBuffer> buffer = buffers[buffer_num];
-                NSData *data = objects[datahash];
+                NSData *data = _h[datahash];
                 memcpy(buffer.contents, data.bytes, data.length);
             } else if ([x hasPrefix:@"CopyOut"]) {
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
