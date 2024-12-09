@@ -13,11 +13,15 @@
 id<MTLDevice> device;
 NSMutableDictionary<NSString *, id> *objects;
 NSMutableDictionary<NSString *, id> *buffers;
+NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
+id<MTLCommandQueue> mtl_queue;
 
 - (void)viewDidLoad {
     objects = [[NSMutableDictionary alloc] init];
     buffers = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
+    mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
+    mtl_buffers_in_flight = [[NSMutableArray alloc] init];
     [super viewDidLoad];
     [self startHTTPServer];
 }
@@ -155,6 +159,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
+                NSLog(@"%@",x);
                 NSString *pattern = @"name='([^']+)'";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *name = [x substringWithRange:range];
@@ -181,6 +186,53 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 NSLog(@"ProgramExec");
+                NSString *pattern = @"name='([^']+)'";
+                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *name = [x substringWithRange:range];
+                pattern = @"datahash='([^']+)'";
+                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *datahash = [x substringWithRange:range];
+                
+                pattern = @"global_size=\\((\\d+), (\\d+), (\\d+)\\)";
+                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+                NSTextCheckingResult *match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
+                NSInteger gx = [[x substringWithRange:[match rangeAtIndex:1]] integerValue];
+                NSInteger gy = [[x substringWithRange:[match rangeAtIndex:2]] integerValue];
+                NSInteger gz = [[x substringWithRange:[match rangeAtIndex:3]] integerValue];
+                
+                pattern = @"local_size=\\((\\d+), (\\d+), (\\d+)\\)";
+                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+                match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
+                NSInteger lx = [[x substringWithRange:[match rangeAtIndex:1]] integerValue];
+                NSInteger ly = [[x substringWithRange:[match rangeAtIndex:2]] integerValue];
+                NSInteger lz = [[x substringWithRange:[match rangeAtIndex:3]] integerValue];
+                
+                pattern = @"bufs=\\(([^)]+)\\)";
+                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+                range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *bufsContents = [x substringWithRange:range];
+                NSArray<NSString *> *bufsRawValues = [bufsContents componentsSeparatedByString:@","];
+                NSMutableArray<NSString *> *bufsValues = [NSMutableArray array];
+                for (NSString *value in bufsRawValues) {
+                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (trimmedValue.length > 0) {
+                        [bufsValues addObject:trimmedValue];
+                    }
+                }
+                
+                id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
+                id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+                [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
+                for(int i = 0; i < bufsValues.count; i++){
+                    [computeEncoder setBuffer:buffers[bufsValues[i]] offset:0 atIndex:i];
+                }
+                MTLSize gridSize = MTLSizeMake(gx,gy,gz);
+                MTLSize threadGroupSize = MTLSizeMake(lx, ly, lz);
+                [computeEncoder dispatchThreads:gridSize
+                          threadsPerThreadgroup:threadGroupSize];
+                [computeEncoder endEncoding];
+                [commandBuffer commit];
+                [mtl_buffers_in_flight addObject: commandBuffer];
             } else {
                 NSLog(@"No op found");
             }
