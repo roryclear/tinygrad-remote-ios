@@ -111,21 +111,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             if ([stringData isKindOfClass:[NSString class]] && ([stringData hasPrefix:@"#include <metal_stdlib>"] || [stringData hasPrefix:@"["])) { //todo, store both cases as data and convert later
                 _h[datahash] = stringData;
             } else {
-                const unsigned char *buffer = (const unsigned char *)[rangeData bytes];
-                NSMutableString *hexString = [NSMutableString stringWithCapacity:rangeData.length * 2];
-                for (int i = 0; i < rangeData.length; ++i) {
-                    [hexString appendFormat:@"%02x", buffer[i]];
-                }
                 _h[datahash] = rangeData;
             }
             ptr += 0x28 + datalen;
         }
+        CFRelease(data);
 
 
         NSMutableArray *_q = [NSMutableArray array];
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
-
+        
         for (NSString *key in _h) {
             id value = _h[key];
             
@@ -162,8 +158,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 pattern = @"size=(\\d+)";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 int size = [[x substringWithRange:range] intValue];
-                id<MTLBuffer> buffer = [device newBufferWithLength:size options:MTLResourceStorageModeShared];
-                [buffers setObject:buffer forKey:buffer_num];
+                [buffers setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:buffer_num];
             } else if ([x hasPrefix:@"BufferFree"]) {
                 NSLog(@"BufferFree");
                 NSString *pattern = @"buffer_num=(\\d+)";
@@ -233,6 +228,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                                                    reflection:&reflection
                                                                         error:&error];
                 [objects setObject:pipeline_state forKey:@[name,datahash]];
+                [_h removeObjectForKey:datahash];
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
