@@ -108,7 +108,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             NSString *stringData = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
 
             
-            if ([stringData isKindOfClass:[NSString class]] && ([stringData hasPrefix:@"#include <metal_stdlib>"] || [stringData hasPrefix:@"["])) { //todo, store both cases as data and convert later
+            if ([stringData isKindOfClass:[NSString class]] && [stringData hasPrefix:@"["]) { //todo, store both cases as data and convert later
                 _h[datahash] = stringData;
             } else {
                 _h[datahash] = rangeData;
@@ -194,7 +194,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
-                const uint8_t *byteData = (const uint8_t *)rawData;
                 char responseHeader[256];
                 snprintf(responseHeader, sizeof(responseHeader),
                          "HTTP/1.1 200 OK\r\n"
@@ -212,7 +211,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 pattern = @"datahash='([^']+)'";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
-                NSString *prg = _h[datahash];
+                NSString *prg = [[NSString alloc] initWithData:_h[datahash] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
