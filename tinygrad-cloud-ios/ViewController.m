@@ -148,8 +148,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
                     [_q addObject:substring];
                 }
-            } else {
-                NSLog(@"Binary data found for key: %@", key);
             }
         }
 
@@ -173,7 +171,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSString *buffer_num = [x substringWithRange:range];
                 [buffers removeObjectForKey: buffer_num];
             } else if ([x hasPrefix:@"CopyIn"]) {
-                NSLog(@"CopyIn");
+                NSLog(@"CopyIn %@",x);
                 NSString *pattern = @"buffer_num=(\\d+)";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *buffer_num = [x substringWithRange:range];
@@ -183,7 +181,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 NSData *data = _h[datahash];
                 memcpy(buffer.contents, data.bytes, data.length);
+                [_h removeObjectForKey:datahash];
             } else if ([x hasPrefix:@"CopyOut"]) {
+                NSLog(@"copyout %@",x);
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
@@ -199,14 +199,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
-                
                 const uint8_t *byteData = (const uint8_t *)rawData;
-
-                NSLog(@"Raw data contents (in bytes):");
-                for (size_t i = 0; i < bufferSize; i++) {
-                    printf("%02x ", byteData[i]);  // Print each byte as a 2-digit hex number
-                }
-                
                 char responseHeader[256];
                 snprintf(responseHeader, sizeof(responseHeader),
                          "HTTP/1.1 200 OK\r\n"
@@ -225,7 +218,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
                 NSString *prg = _h[datahash];
-                NSLog(@"%@",prg);
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
@@ -244,8 +236,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
-                NSLog(@"ProgramExec");
-                NSLog(@"%@",x);
+                NSLog(@"ProgramExec %@",x);
                 NSString *pattern = @"name='([^']+)'";
                 NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *name = [x substringWithRange:range];
@@ -295,6 +286,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     }
                 }
                 
+                pattern = @"wait=(True|False)";
+                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                BOOL wait = [[x substringWithRange:range] isEqualToString:@"True"];
+                
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
@@ -312,7 +307,22 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
-                [commandBuffer waitUntilCompleted];
+                if(wait) {
+                    [commandBuffer waitUntilCompleted];
+                    float time = (float)(commandBuffer.GPUEndTime - commandBuffer.GPUStartTime);
+                    NSString *timeString = [NSString stringWithFormat:@"%e", time];
+                    const char *timeCString = [timeString UTF8String];
+                    size_t timeCStringLength = strlen(timeCString);
+                    char header[256];
+                    snprintf(header, sizeof(header),
+                             "HTTP/1.1 200 OK\r\n"
+                             "Content-Type: text/plain\r\n"
+                             "Content-Length: %zu\r\n"
+                             "Connection: close\r\n\r\n", timeCStringLength);
+                    send(handle, header, strlen(header), 0);
+                    send(handle, timeCString, timeCStringLength, 0);
+                    return;
+                }
                 [mtl_buffers_in_flight addObject: commandBuffer];
             } else {
                 NSLog(@"No op found %@",x);
@@ -320,7 +330,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }
         
         NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
-        NSLog(@"%@", output);
         const char *header = "HTTP/1.1 200 OK\r\n"
                              "Content-Type: text/plain\r\n"
                              "Content-Length: 4\r\n"
