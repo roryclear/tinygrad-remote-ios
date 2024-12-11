@@ -63,8 +63,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
-    timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 200000;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
@@ -87,7 +87,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
-        
         const UInt8 *bytes = CFDataGetBytePtr(data);
         CFIndex length = CFDataGetLength(data);
         NSData *rangeData;
@@ -180,16 +179,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 NSLog(@"ProgramExec %@",x);
-                NSString *name = extractValues(@"name='([^']+)'", x)[0];
-                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
+                NSArray<NSString *> *name = extractValues(@"name='([^']+)'", x);
+                NSArray<NSString *> *datahash = extractValues(@"datahash='([^']+)'", x);
                 NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
-                BOOL wait = [extractValues(@"wait=(True|False)", x)[0] isEqualToString:@"True"];
+                NSArray<NSString *> *wait = extractValues(@"wait=(True|False)", x);
                 NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-                [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
+                [computeEncoder setComputePipelineState:objects[@[name[0],datahash[0]]]];
                 for(int i = 0; i < bufs.count; i++){
                     [computeEncoder setBuffer:buffers[bufs[i]] offset:0 atIndex:i];
                 }
@@ -202,7 +201,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
-                if(wait) {
+                if([wait[0] isEqualToString:@"True"]) {
                     [commandBuffer waitUntilCompleted];
                     float time = (float)(commandBuffer.GPUEndTime - commandBuffer.GPUStartTime);
                     NSString *timeString = [NSString stringWithFormat:@"%e", time];
