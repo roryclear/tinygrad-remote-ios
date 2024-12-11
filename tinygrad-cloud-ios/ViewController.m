@@ -93,20 +93,19 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSData *rangeData;
         NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
         NSInteger ptr = 0;
-
+        NSString *stringData;
+        NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
         while (ptr < length) {
             NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:0x28 - 0x20];
             uint64_t datalen = 0;
             [slicedData getBytes:&datalen length:sizeof(datalen)];
             datalen = CFSwapInt64LittleToHost(datalen);
             const UInt8 *datahash_bytes = bytes + ptr;
-            NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
+            datahash = [NSMutableString stringWithCapacity:0x40];
             for (int i = 0; i < 0x20; i++) {
                 [datahash appendFormat:@"%02x", datahash_bytes[i]];
             }
             rangeData = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
-            NSString *stringData = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
-
             
             if ([stringData isKindOfClass:[NSString class]] && [stringData hasPrefix:@"["]) { //todo, store both cases as data and convert later
                 _h[datahash] = stringData;
@@ -116,38 +115,26 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             ptr += 0x28 + datalen;
         }
         CFRelease(data);
-
-
+        stringData = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
         NSMutableArray *_q = [NSMutableArray array];
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
-        
-        for (NSString *key in _h) {
-            id value = _h[key];
-            
-            if ([value isKindOfClass:[NSString class]]) {
-                NSString *input = (NSString *)value;
-                input = [input stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"[]"]];
                 
-                __block NSInteger lastIndex = 0;
-                [regex enumerateMatchesInString:input options:0 range:NSMakeRange(0, input.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-                    if (match.range.location > lastIndex) {
-                        NSString *substring = [input substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)];
-                        substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-                        [_q addObject:substring];
-                    }
-                    lastIndex = match.range.location;
-                }];
-                
-                if (lastIndex < input.length) {
-                    NSString *substring = [input substringFromIndex:lastIndex];
-                    substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-                    [_q addObject:substring];
-                }
+        __block NSInteger lastIndex = 0;
+        [regex enumerateMatchesInString:stringData options:0 range:NSMakeRange(0, stringData.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
+            if (match.range.location > lastIndex) {
+                NSString *substring = [stringData substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)];
+                substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
+                [_q addObject:substring];
             }
+            lastIndex = match.range.location;
+        }];
+        
+        if (lastIndex < stringData.length) {
+            NSString *substring = [stringData substringFromIndex:lastIndex];
+            substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
+            [_q addObject:substring];
         }
-
-        //NSLog(@"_q = %@", _q);
         
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
