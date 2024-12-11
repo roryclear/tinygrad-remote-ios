@@ -58,6 +58,22 @@ id<MTLCommandQueue> mtl_queue;
     NSLog(@"HTTP Server started on port 6667.");
 }
 
+NSArray<NSString *> *extractValues(NSString *pattern, NSString *x) {
+    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+    NSRange range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+    NSString *contents = [x substringWithRange:range];
+    NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
+    NSMutableArray<NSString *> *values = [NSMutableArray array];
+
+    for (NSString *value in rawValues) {
+        NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (trimmedValue.length > 0) {
+            [values addObject:trimmedValue];
+        }
+    }
+    return [values copy];
+}
+
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
@@ -226,38 +242,13 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSInteger ly = [[x substringWithRange:[match rangeAtIndex:2]] integerValue];
                 NSInteger lz = [[x substringWithRange:[match rangeAtIndex:3]] integerValue];
                 
-                pattern = @"bufs=\\(([^)]+)\\)";
-                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-                range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *bufsContents = [x substringWithRange:range];
-                NSArray<NSString *> *bufsRawValues = [bufsContents componentsSeparatedByString:@","];
-                NSMutableArray<NSString *> *bufsValues = [NSMutableArray array];
-                for (NSString *value in bufsRawValues) {
-                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                    if (trimmedValue.length > 0) {
-                        [bufsValues addObject:trimmedValue];
-                    }
-                }
-                
-                pattern = @"vals=\\(([^)]+)\\)";
-                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-                range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *valsContents = [x substringWithRange:range];
-                NSArray<NSString *> *valsRawValues = [valsContents componentsSeparatedByString:@","];
-                NSMutableArray<NSNumber *> *valsValues = [NSMutableArray array];
-
-                for (NSString *value in valsRawValues) {
-                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                    if (trimmedValue.length > 0) {
-                        NSInteger intValue = [trimmedValue integerValue]; // Convert string to integer
-                        [valsValues addObject:@(intValue)]; // Add as NSNumber
-                    }
-                }
-                
                 pattern = @"wait=(True|False)";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 BOOL wait = [[x substringWithRange:range] isEqualToString:@"True"];
-                
+                                
+                NSArray<NSString *> *bufsValues = extractValues(@"bufs=\\(([^)]+)\\)", x);
+                NSArray<NSString *> *valsValues = extractValues(@"vals=\\(([^)]+)\\)", x);
+                                
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
