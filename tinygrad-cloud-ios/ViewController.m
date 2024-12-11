@@ -65,8 +65,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
         NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
-        while (bytes > 0 || CFDataGetLength(data) < size) {
-            if(bytes > 0) {
+        while (bytes > 0 || CFDataGetLength(data) + 150 < size) { //todo, size is too high?
+            if (bytes > 0) {
                 CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
             }
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
