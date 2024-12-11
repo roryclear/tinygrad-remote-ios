@@ -11,13 +11,13 @@
 @implementation ViewController
 
 id<MTLDevice> device;
-NSMutableDictionary<NSString *, id> *objects;
+NSMutableDictionary<NSString *, id> *pipeline_states;
 NSMutableDictionary<NSString *, id> *buffers;
 NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 id<MTLCommandQueue> mtl_queue;
 
 - (void)viewDidLoad {
-    objects = [[NSMutableDictionary alloc] init];
+    pipeline_states = [[NSMutableDictionary alloc] init];
     buffers = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
     mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
@@ -42,21 +42,6 @@ id<MTLCommandQueue> mtl_queue;
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
     CFRelease(source);
     NSLog(@"HTTP Server started on port 6667.");
-}
-
-NSArray<NSString *> *extractValues(NSString *pattern, NSString *x) {
-    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-    NSRange range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-    NSString *contents = [x substringWithRange:range];
-    NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
-    NSMutableArray<NSString *> *values = [NSMutableArray array];
-    for (NSString *value in rawValues) {
-        NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (trimmedValue.length > 0) {
-            [values addObject:trimmedValue];
-        }
-    }
-    return [values copy];
 }
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
@@ -122,34 +107,39 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         [_q addObject:[[stringData substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
 
         for (NSString *x in _q) {
-            NSArray<NSString *> *name = extractValues(@"name='([^']+)'", x);
-            NSArray<NSString *> *datahash = extractValues(@"datahash='([^']+)'", x);
-            NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
-            NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
-            NSArray<NSString *> *wait = extractValues(@"wait=(True|False)", x);
-            NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
-            NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
-            NSArray<NSString *> *buffer_num = extractValues(@"buffer_num=(\\d+)", x);
-            NSArray<NSString *> *size = extractValues(@"size=(\\d+)", x);
-            
+            NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
+                @"local_sizes": @"local_size=\\(([^)]+)\\)",@"wait": @"wait=(True|False)",@"bufs": @"bufs=\\(([^)]+)\\)",@"vals": @"vals=\\(([^)]+)\\)",
+                @"buffer_num": @"buffer_num=(\\d+)",@"size": @"size=(\\d+)"};
+            NSMutableDictionary<NSString *, NSArray<NSString *> *> *values = [NSMutableDictionary dictionary];
+            [patterns enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *pattern, BOOL *stop) {
+                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+                NSRange range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
+                NSString *contents = [x substringWithRange:range];
+                NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
+                NSMutableArray<NSString *> *extractedValues = [NSMutableArray array];
+                for (NSString *value in rawValues) {
+                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (trimmedValue.length > 0) {
+                        [extractedValues addObject:trimmedValue];
+                    }
+                }
+                values[key] = [extractedValues copy];
+            }];
+
             if ([x hasPrefix:@"BufferAlloc"]) {
-                NSLog(@"BufferAlloc");
-                [buffers setObject:[device newBufferWithLength:[size[0] intValue] options:MTLResourceStorageModeShared] forKey:buffer_num[0]];
+                [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
             } else if ([x hasPrefix:@"BufferFree"]) {
-                NSLog(@"BufferFree");
-                [buffers removeObjectForKey: buffer_num[0]];
+                [buffers removeObjectForKey: values[@"buffer_num"][0]];
             } else if ([x hasPrefix:@"CopyIn"]) {
-                NSLog(@"CopyIn %@",x);
-                id<MTLBuffer> buffer = buffers[buffer_num[0]];
-                NSData *data = _h[datahash[0]];
+                id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
+                NSData *data = _h[values[@"datahash"][0]];
                 memcpy(buffer.contents, data.bytes, data.length);
             } else if ([x hasPrefix:@"CopyOut"]) {
-                NSLog(@"copyout %@",x);
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
                 [mtl_buffers_in_flight removeAllObjects];
-                id<MTLBuffer> buffer = buffers[buffer_num[0]];
+                id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
                 char responseHeader[256];
@@ -161,42 +151,40 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 send(handle, responseHeader, strlen(responseHeader), 0);
                 send(handle, rawData, bufferSize, 0);
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
-                NSLog(@"ProgramAlloc");
-                NSString *prg = [[NSString alloc] initWithData:_h[datahash[0]] encoding:NSUTF8StringEncoding];
+                NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
                                                                  error:&error];
                 MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-                descriptor.computeFunction = [library newFunctionWithName:name[0]];;
+                descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];;
                 descriptor.supportIndirectCommandBuffers = YES;
                 MTLComputePipelineReflection *reflection = nil;
                 id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
                                                                                                    options:MTLPipelineOptionNone
                                                                                                 reflection:&reflection
                                                                                                      error:&error];
-                [objects setObject:pipeline_state forKey:@[name[0],datahash[0]]];
-                [_h removeObjectForKey:datahash[0]];
+                [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
+                [_h removeObjectForKey:values[@"datahash"][0]];
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
-                NSLog(@"ProgramExec %@",x);
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-                [computeEncoder setComputePipelineState:objects[@[name[0],datahash[0]]]];
-                for(int i = 0; i < bufs.count; i++){
-                    [computeEncoder setBuffer:buffers[bufs[i]] offset:0 atIndex:i];
+                [computeEncoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
+                for(int i = 0; i < values[@"bufs"].count; i++){
+                    [computeEncoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
                 }
-                for (int i = 0; i < vals.count; i++) {
-                    NSInteger value = [vals[i] integerValue];
-                    [computeEncoder setBytes:&value length:sizeof(NSInteger) atIndex:i + bufs.count];
+                for (int i = 0; i < values[@"vals"].count; i++) {
+                    NSInteger value = [values[@"vals"][i] integerValue];
+                    [computeEncoder setBytes:&value length:sizeof(NSInteger) atIndex:i + values[@"bufs"].count];
                 }
-                MTLSize gridSize = MTLSizeMake([gloal_sizes[0] intValue], [gloal_sizes[1] intValue], [gloal_sizes[2] intValue]);
-                MTLSize threadGroupSize = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
+                MTLSize gridSize = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
+                MTLSize threadGroupSize = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
                 [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
-                if([wait[0] isEqualToString:@"True"]) {
+                if([values[@"wait"][0] isEqualToString:@"True"]) {
                     [commandBuffer waitUntilCompleted];
                     float time = (float)(commandBuffer.GPUEndTime - commandBuffer.GPUStartTime);
                     NSString *timeString = [NSString stringWithFormat:@"%e", time];
