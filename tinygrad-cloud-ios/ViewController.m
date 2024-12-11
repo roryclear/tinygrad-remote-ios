@@ -176,7 +176,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 NSData *data = _h[datahash];
                 memcpy(buffer.contents, data.bytes, data.length);
-                [_h removeObjectForKey:datahash];
             } else if ([x hasPrefix:@"CopyOut"]) {
                 NSLog(@"copyout %@",x);
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
