@@ -122,21 +122,26 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         [_q addObject:[[stringData substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
 
         for (NSString *x in _q) {
+            NSArray<NSString *> *name = extractValues(@"name='([^']+)'", x);
+            NSArray<NSString *> *datahash = extractValues(@"datahash='([^']+)'", x);
+            NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
+            NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
+            NSArray<NSString *> *wait = extractValues(@"wait=(True|False)", x);
+            NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
+            NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
+            NSArray<NSString *> *buffer_num = extractValues(@"buffer_num=(\\d+)", x);
+            NSArray<NSString *> *size = extractValues(@"size=(\\d+)", x);
+            
             if ([x hasPrefix:@"BufferAlloc"]) {
                 NSLog(@"BufferAlloc");
-                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
-                NSString *size = extractValues(@"size=(\\d+)", x)[0];
-                [buffers setObject:[device newBufferWithLength:[size intValue] options:MTLResourceStorageModeShared] forKey:buffer_num];
+                [buffers setObject:[device newBufferWithLength:[size[0] intValue] options:MTLResourceStorageModeShared] forKey:buffer_num[0]];
             } else if ([x hasPrefix:@"BufferFree"]) {
                 NSLog(@"BufferFree");
-                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
-                [buffers removeObjectForKey: buffer_num];
+                [buffers removeObjectForKey: buffer_num[0]];
             } else if ([x hasPrefix:@"CopyIn"]) {
                 NSLog(@"CopyIn %@",x);
-                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
-                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
-                id<MTLBuffer> buffer = buffers[buffer_num];
-                NSData *data = _h[datahash];
+                id<MTLBuffer> buffer = buffers[buffer_num[0]];
+                NSData *data = _h[datahash[0]];
                 memcpy(buffer.contents, data.bytes, data.length);
             } else if ([x hasPrefix:@"CopyOut"]) {
                 NSLog(@"copyout %@",x);
@@ -144,8 +149,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
                 [mtl_buffers_in_flight removeAllObjects];
-                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
-                id<MTLBuffer> buffer = buffers[buffer_num];
+                id<MTLBuffer> buffer = buffers[buffer_num[0]];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
                 char responseHeader[256];
@@ -158,34 +162,25 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 send(handle, rawData, bufferSize, 0);
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
-                NSString *name = extractValues(@"name='([^']+)'", x)[0];
-                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
-                NSString *prg = [[NSString alloc] initWithData:_h[datahash] encoding:NSUTF8StringEncoding];
+                NSString *prg = [[NSString alloc] initWithData:_h[datahash[0]] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
                                                                  error:&error];
                 MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-                descriptor.computeFunction = [library newFunctionWithName:name];;
+                descriptor.computeFunction = [library newFunctionWithName:name[0]];;
                 descriptor.supportIndirectCommandBuffers = YES;
                 MTLComputePipelineReflection *reflection = nil;
                 id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
                                                                                                    options:MTLPipelineOptionNone
                                                                                                 reflection:&reflection
                                                                                                      error:&error];
-                [objects setObject:pipeline_state forKey:@[name,datahash]];
-                [_h removeObjectForKey:datahash];
+                [objects setObject:pipeline_state forKey:@[name[0],datahash[0]]];
+                [_h removeObjectForKey:datahash[0]];
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 NSLog(@"ProgramExec %@",x);
-                NSArray<NSString *> *name = extractValues(@"name='([^']+)'", x);
-                NSArray<NSString *> *datahash = extractValues(@"datahash='([^']+)'", x);
-                NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
-                NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
-                NSArray<NSString *> *wait = extractValues(@"wait=(True|False)", x);
-                NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
-                NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name[0],datahash[0]]]];
