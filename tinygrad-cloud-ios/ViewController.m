@@ -142,27 +142,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
                 NSLog(@"BufferAlloc");
-                NSString *pattern = @"buffer_num=(\\d+)";
-                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *buffer_num = [x substringWithRange:range];
-                pattern = @"size=(\\d+)";
-                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                int size = [[x substringWithRange:range] intValue];
-                [buffers setObject:[device newBufferWithLength:size options:MTLResourceStorageModeShared] forKey:buffer_num];
+                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
+                NSString *size = extractValues(@"size=(\\d+)", x)[0];
+                [buffers setObject:[device newBufferWithLength:[size intValue] options:MTLResourceStorageModeShared] forKey:buffer_num];
             } else if ([x hasPrefix:@"BufferFree"]) {
                 NSLog(@"BufferFree");
-                NSString *pattern = @"buffer_num=(\\d+)";
-                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *buffer_num = [x substringWithRange:range];
+                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
                 [buffers removeObjectForKey: buffer_num];
             } else if ([x hasPrefix:@"CopyIn"]) {
                 NSLog(@"CopyIn %@",x);
-                NSString *pattern = @"buffer_num=(\\d+)";
-                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *buffer_num = [x substringWithRange:range];
-                pattern = @"datahash='([^']+)'";
-                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *datahash = [x substringWithRange:range];
+                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
+                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 NSData *data = _h[datahash];
                 memcpy(buffer.contents, data.bytes, data.length);
@@ -172,14 +162,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
                 [mtl_buffers_in_flight removeAllObjects];
-                NSString *pattern = @"buffer_num=(\\d+)";
-                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern
-                                                                                       options:0
-                                                                                         error:nil];
-                NSTextCheckingResult *match = [regex firstMatchInString:x
-                                                                options:0
-                                                                  range:NSMakeRange(0, [x length])];
-                NSString *buffer_num = [x substringWithRange:[match rangeAtIndex:1]];
+                NSString *buffer_num = extractValues(@"buffer_num=(\\d+)", x)[0];
                 id<MTLBuffer> buffer = buffers[buffer_num];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
@@ -194,12 +177,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
-                NSString *pattern = @"name='([^']+)'";
-                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *name = [x substringWithRange:range];
-                pattern = @"datahash='([^']+)'";
-                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *datahash = [x substringWithRange:range];
+                NSString *name = extractValues(@"name='([^']+)'", x)[0];
+                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
                 NSString *prg = [[NSString alloc] initWithData:_h[datahash] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
@@ -221,13 +200,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"ProgramFree");
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 NSLog(@"ProgramExec %@",x);
-                NSString *pattern = @"name='([^']+)'";
-                NSRange range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *name = [x substringWithRange:range];
-                pattern = @"datahash='([^']+)'";
-                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *datahash = [x substringWithRange:range];
-                                
+                NSString *name = extractValues(@"name='([^']+)'", x)[0];
+                NSString *datahash = extractValues(@"datahash='([^']+)'", x)[0];
                 NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
                 BOOL wait = [extractValues(@"wait=(True|False)", x)[0] isEqualToString:@"True"];
