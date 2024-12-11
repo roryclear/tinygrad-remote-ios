@@ -119,7 +119,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSMutableArray *_q = [NSMutableArray array];
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
-                
         __block NSInteger lastIndex = 0;
         [regex enumerateMatchesInString:stringData options:0 range:NSMakeRange(0, stringData.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
             if (match.range.location > lastIndex) {
@@ -129,12 +128,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             }
             lastIndex = match.range.location;
         }];
-        
-        if (lastIndex < stringData.length) {
-            NSString *substring = [stringData substringFromIndex:lastIndex];
-            substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-            [_q addObject:substring];
-        }
+        NSString *substring = [stringData substringFromIndex:lastIndex];
+        substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
+        [_q addObject:substring];
         
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
