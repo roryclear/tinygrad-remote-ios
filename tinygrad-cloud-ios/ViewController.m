@@ -76,7 +76,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
         send(handle, response, strlen(response), 0);
         close(handle);
-        return;
     } else if ([requestPath hasPrefix:@"/batch"]) {
         CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
         NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
@@ -158,7 +157,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                          "Connection: close\r\n\r\n", bufferSize);
                 send(handle, responseHeader, strlen(responseHeader), 0);
                 send(handle, rawData, bufferSize, 0);
-                return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 NSLog(@"ProgramAlloc");
                 NSString *name = extractValues(@"name='([^']+)'", x)[0];
@@ -189,7 +187,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 BOOL wait = [extractValues(@"wait=(True|False)", x)[0] isEqualToString:@"True"];
                 NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
-                                
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
@@ -219,12 +216,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                              "Connection: close\r\n\r\n", timeCStringLength);
                     send(handle, header, strlen(header), 0);
                     send(handle, timeCString, timeCStringLength, 0);
-                    return;
                 }
                 [mtl_buffers_in_flight addObject: commandBuffer];
             }
         }
-        return;
     }
 }
 @end
