@@ -106,12 +106,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [datahash appendFormat:@"%02x", datahash_bytes[i]];
             }
             rangeData = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
-            
-            if ([stringData isKindOfClass:[NSString class]] && [stringData hasPrefix:@"["]) { //todo, store both cases as data and convert later
-                _h[datahash] = stringData;
-            } else {
-                _h[datahash] = rangeData;
-            }
+            _h[datahash] = rangeData;
             ptr += 0x28 + datalen;
         }
         CFRelease(data);
