@@ -230,11 +230,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                 
                 NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
-                
-                pattern = @"wait=(True|False)";
-                range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                BOOL wait = [[x substringWithRange:range] isEqualToString:@"True"];
-                                
+                BOOL wait = [extractValues(@"wait=(True|False)", x)[0] isEqualToString:@"True"];
                 NSArray<NSString *> *bufsValues = extractValues(@"bufs=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *valsValues = extractValues(@"vals=\\(([^)]+)\\)", x);
                                 
@@ -272,8 +268,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     return;
                 }
                 [mtl_buffers_in_flight addObject: commandBuffer];
-            } else {
-                NSLog(@"No op found %@",x);
             }
         }
         return;
