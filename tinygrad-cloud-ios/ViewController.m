@@ -116,16 +116,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
         __block NSInteger lastIndex = 0;
         [regex enumerateMatchesInString:stringData options:0 range:NSMakeRange(0, stringData.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-            if (match.range.location > lastIndex) {
-                NSString *substring = [stringData substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)];
-                substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-                [_q addObject:substring];
-            }
+            NSRange range = NSMakeRange(lastIndex, match.range.location - lastIndex);
+            [_q addObject:[[stringData substringWithRange:range] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
             lastIndex = match.range.location;
         }];
-        NSString *substring = [stringData substringFromIndex:lastIndex];
-        substring = [substring stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]];
-        [_q addObject:substring];
+        [_q addObject:[[stringData substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
+
         
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
@@ -300,15 +296,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSLog(@"No op found %@",x);
             }
         }
-        
-        NSMutableString *output = [NSMutableString stringWithCapacity:length * 2];
-        const char *header = "HTTP/1.1 200 OK\r\n"
-                             "Content-Type: text/plain\r\n"
-                             "Content-Length: 4\r\n"
-                             "Connection: close\r\n\r\n";
-        const char body[] = {0x00, 'U', '$', 'G'}; //todo
-        send(handle, header, strlen(header), 0);
-        send(handle, body, sizeof(body), 0);
         return;
     }
 }
