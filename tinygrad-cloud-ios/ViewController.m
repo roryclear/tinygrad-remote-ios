@@ -23,29 +23,19 @@ id<MTLCommandQueue> mtl_queue;
     mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
     mtl_buffers_in_flight = [[NSMutableArray alloc] init];
     [super viewDidLoad];
-    [self startHTTPServer];
-}
-
-- (void)startHTTPServer {
     self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
-    if (!self.socket) {
-        NSLog(@"Unable to create socket.");
-        return;
+    while (!self.socket) {
+        sleep(1);
+        self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
     }
     struct sockaddr_in address;
     memset(&address, 0, sizeof(address));
     address.sin_len = sizeof(address);
-    address.sin_family = AF_INET;
-    address.sin_port = htons(6667);  //use same port on tinygrad
+    address.sin_port = htons(6667);  // use same port on tinygrad
     address.sin_addr.s_addr = INADDR_ANY;
-    
     CFDataRef addressData = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
-    if (CFSocketSetAddress(self.socket, addressData) != kCFSocketSuccess) {
-        NSLog(@"Failed to bind socket to address.");
-        CFRelease(self.socket);
-        self.socket = NULL;
-        exit(0); //TODO, add ui or retry
-        return;
+    while (CFSocketSetAddress(self.socket, addressData) != kCFSocketSuccess) {
+        sleep(1);
     }
     CFRelease(addressData);
     CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, self.socket, 0);
