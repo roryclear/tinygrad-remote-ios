@@ -26,14 +26,12 @@ id<MTLCommandQueue> mtl_queue;
     [self startHTTPServer];
 }
 
-
 - (void)startHTTPServer {
     self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
     if (!self.socket) {
         NSLog(@"Unable to create socket.");
         return;
     }
-    
     struct sockaddr_in address;
     memset(&address, 0, sizeof(address));
     address.sin_len = sizeof(address);
@@ -50,11 +48,9 @@ id<MTLCommandQueue> mtl_queue;
         return;
     }
     CFRelease(addressData);
-    
     CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, self.socket, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
     CFRelease(source);
-    
     NSLog(@"HTTP Server started on port 6667.");
 }
 
@@ -64,7 +60,6 @@ NSArray<NSString *> *extractValues(NSString *pattern, NSString *x) {
     NSString *contents = [x substringWithRange:range];
     NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
     NSMutableArray<NSString *> *values = [NSMutableArray array];
-
     for (NSString *value in rawValues) {
         NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (trimmedValue.length > 0) {
@@ -138,7 +133,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }];
         [_q addObject:[[stringData substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
 
-        
         for (NSString *x in _q) {
             if ([x hasPrefix:@"BufferAlloc"]) {
                 NSLog(@"BufferAlloc");
@@ -184,16 +178,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                                options:nil
                                                                  error:&error];
-                id<MTLFunction> func = [library newFunctionWithName:name];
                 MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-                descriptor.computeFunction = func;
+                descriptor.computeFunction = [library newFunctionWithName:name];;
                 descriptor.supportIndirectCommandBuffers = YES;
-                MTLPipelineOption options = MTLPipelineOptionNone;
-                MTLAutoreleasedComputePipelineReflection *reflection = nil;
+                MTLComputePipelineReflection *reflection = nil;
                 id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
-                                                                      options:options
-                                                                   reflection:&reflection
-                                                                        error:&error];
+                                                                                                   options:MTLPipelineOptionNone
+                                                                                                reflection:&reflection
+                                                                                                     error:&error];
                 [objects setObject:pipeline_state forKey:@[name,datahash]];
                 [_h removeObjectForKey:datahash];
             } else if ([x hasPrefix:@"ProgramFree"]) {
@@ -205,20 +197,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
                 NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
                 BOOL wait = [extractValues(@"wait=(True|False)", x)[0] isEqualToString:@"True"];
-                NSArray<NSString *> *bufsValues = extractValues(@"bufs=\\(([^)]+)\\)", x);
-                NSArray<NSString *> *valsValues = extractValues(@"vals=\\(([^)]+)\\)", x);
+                NSArray<NSString *> *bufs = extractValues(@"bufs=\\(([^)]+)\\)", x);
+                NSArray<NSString *> *vals = extractValues(@"vals=\\(([^)]+)\\)", x);
                                 
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
                 [computeEncoder setComputePipelineState:objects[@[name,datahash]]];
-                for(int i = 0; i < bufsValues.count; i++){
-                    [computeEncoder setBuffer:buffers[bufsValues[i]] offset:0 atIndex:i];
+                for(int i = 0; i < bufs.count; i++){
+                    [computeEncoder setBuffer:buffers[bufs[i]] offset:0 atIndex:i];
                 }
-                for(int i = 0; i < valsValues.count; i++){
-                    NSMutableData *data = [NSMutableData dataWithCapacity:valsValues.count * sizeof(NSInteger)];
-                    NSInteger value = [valsValues[i] integerValue];
-                    [data appendBytes:&value length:sizeof(NSInteger)];
-                    [computeEncoder setBytes:data.bytes length:data.length atIndex:i+bufsValues.count];
+                for (int i = 0; i < vals.count; i++) {
+                    NSInteger value = [vals[i] integerValue];
+                    [computeEncoder setBytes:&value length:sizeof(NSInteger) atIndex:i + bufs.count];
                 }
                 MTLSize gridSize = MTLSizeMake([gloal_sizes[0] intValue], [gloal_sizes[1] intValue], [gloal_sizes[2] intValue]);
                 MTLSize threadGroupSize = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
