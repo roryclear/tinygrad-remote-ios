@@ -227,20 +227,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 pattern = @"datahash='([^']+)'";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *datahash = [x substringWithRange:range];
-                
-                pattern = @"global_size=\\((\\d+), (\\d+), (\\d+)\\)";
-                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-                NSTextCheckingResult *match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
-                NSInteger gx = [[x substringWithRange:[match rangeAtIndex:1]] integerValue];
-                NSInteger gy = [[x substringWithRange:[match rangeAtIndex:2]] integerValue];
-                NSInteger gz = [[x substringWithRange:[match rangeAtIndex:3]] integerValue];
-                
-                pattern = @"local_size=\\((\\d+), (\\d+), (\\d+)\\)";
-                regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-                match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
-                NSInteger lx = [[x substringWithRange:[match rangeAtIndex:1]] integerValue];
-                NSInteger ly = [[x substringWithRange:[match rangeAtIndex:2]] integerValue];
-                NSInteger lz = [[x substringWithRange:[match rangeAtIndex:3]] integerValue];
+                                
+                NSArray<NSString *> *gloal_sizes = extractValues(@"global_size=\\(([^)]+)\\)", x);
+                NSArray<NSString *> *local_sizes = extractValues(@"local_size=\\(([^)]+)\\)", x);
                 
                 pattern = @"wait=(True|False)";
                 range = [[[NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil] firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
@@ -261,8 +250,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     [data appendBytes:&value length:sizeof(NSInteger)];
                     [computeEncoder setBytes:data.bytes length:data.length atIndex:i+bufsValues.count];
                 }
-                MTLSize gridSize = MTLSizeMake(gx,gy,gz);
-                MTLSize threadGroupSize = MTLSizeMake(lx, ly, lz);
+                MTLSize gridSize = MTLSizeMake([gloal_sizes[0] intValue], [gloal_sizes[1] intValue], [gloal_sizes[2] intValue]);
+                MTLSize threadGroupSize = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
                 [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
                 [computeEncoder endEncoding];
                 [commandBuffer commit];
