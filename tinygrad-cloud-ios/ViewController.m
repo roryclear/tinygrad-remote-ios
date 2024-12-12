@@ -40,6 +40,17 @@ id<MTLCommandQueue> mtl_queue;
     NSLog(@"HTTP Server started on port 6667.");
 }
 
+void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
+    char response_header[256];
+    snprintf(response_header, sizeof(response_header),
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: text/plain\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n\r\n", dataSize);
+    send(handle, response_header, strlen(response_header), 0);
+    send(handle, data, dataSize, 0);
+}
+
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
@@ -62,7 +73,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSInteger size = CFStringGetIntValue(content_length);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
         NSInteger header_idx = -1;
-        while (1) {
+        while (bytes > 0) {
             CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
             if (header_idx == -1) {
                 CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
@@ -148,15 +159,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [mtl_buffers_in_flight removeAllObjects];
                 id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 const void *rawData = buffer.contents;
-                size_t bufferSize = buffer.length;
-                char response_header[256];
-                snprintf(response_header, sizeof(response_header),
-                         "HTTP/1.1 200 OK\r\n"
-                         "Content-Type: text/plain\r\n"
-                         "Content-Length: %zu\r\n"
-                         "Connection: close\r\n\r\n", bufferSize);
-                send(handle, response_header, strlen(response_header), 0);
-                send(handle, rawData, bufferSize, 0);
+                sendHTTPResponse(handle, rawData, buffer.length);
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
                 NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
@@ -194,17 +197,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if([values[@"wait"][0] isEqualToString:@"True"]) {
                     [commandBuffer waitUntilCompleted];
                     float time = (float)(commandBuffer.GPUEndTime - commandBuffer.GPUStartTime);
-                    NSString *timeString = [NSString stringWithFormat:@"%e", time];
-                    const char *timeCString = [timeString UTF8String];
-                    size_t timeCStringLength = strlen(timeCString);
-                    char header[256];
-                    snprintf(header, sizeof(header),
-                             "HTTP/1.1 200 OK\r\n"
-                             "Content-Type: text/plain\r\n"
-                             "Content-Length: %zu\r\n"
-                             "Connection: close\r\n\r\n", timeCStringLength);
-                    send(handle, header, strlen(header), 0);
-                    send(handle, timeCString, timeCStringLength, 0);
+                    const char *timeCString = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    sendHTTPResponse(handle, timeCString, strlen(timeCString));
                 }
                 [mtl_buffers_in_flight addObject: commandBuffer];
             }
