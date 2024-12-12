@@ -50,7 +50,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 10;
-    timeout.tv_usec = 0; //TODO this is arbitrary
+    timeout.tv_usec = 0;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
@@ -66,19 +66,23 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
         NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
+        NSInteger header_idx = -1;
         while (1) {
             CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
-            if (CFDataGetLength(data) >= 32) {
-                UInt8 lastBytes[32];
-                CFDataGetBytes(data, CFRangeMake(CFDataGetLength(data) - 32, 32), lastBytes);
-                NSString *lastString = [[NSString alloc] initWithBytes:lastBytes length:32 encoding:NSUTF8StringEncoding];
-                if ([lastString containsString:@"CopyOut(buffer_num="] && [lastString hasSuffix:@")]"]) {
-                    shutdown(handle, SHUT_RD);
-                    break;
+            if (header_idx == -1) {
+                CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
+                for (CFIndex i = 0; i <= CFDataGetLength(data) - CFDataGetLength(h_data); i++) {
+                    if (memcmp(CFDataGetBytePtr(data) + i, CFDataGetBytePtr(h_data), CFDataGetLength(h_data)) == 0) {
+                        header_idx = i + CFDataGetLength(h_data);
+                        break;
+                    }
                 }
             }
+            if(CFDataGetLength(data) + header_idx >= size) break;
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
+        shutdown(handle, SHUT_RD);
+
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
         const UInt8 *bytes = CFDataGetBytePtr(data);
         CFIndex length = CFDataGetLength(data);
