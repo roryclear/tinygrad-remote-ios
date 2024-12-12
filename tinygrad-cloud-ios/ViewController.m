@@ -65,7 +65,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
         NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
-        while (bytes > 0 || CFDataGetLength(data) + 150 < size) { //todo, size is too high?
+        while (bytes > 0 || CFDataGetLength(data) < size) { //todo, size is too high?
             if (bytes > 0) {
                 CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
             }
@@ -151,11 +151,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 send(handle, responseHeader, strlen(responseHeader), 0);
                 send(handle, rawData, bufferSize, 0);
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
+                if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
                 NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
                 id<MTLLibrary> library = [device newLibraryWithSource:prg
-                                                               options:nil
-                                                                 error:&error];
+                                                              options:nil
+                                                                error:&error];
                 MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
                 descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];;
                 descriptor.supportIndirectCommandBuffers = YES;
@@ -165,9 +166,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                                                                                 reflection:&reflection
                                                                                                      error:&error];
                 [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
-                [_h removeObjectForKey:values[@"datahash"][0]];
             } else if ([x hasPrefix:@"ProgramFree"]) {
-                NSLog(@"ProgramFree");
+                [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
