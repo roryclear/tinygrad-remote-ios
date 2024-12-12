@@ -44,12 +44,13 @@ id<MTLCommandQueue> mtl_queue;
     NSLog(@"HTTP Server started on port 6667.");
 }
 
+
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 5000; //TODO this is arbitrary
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0; //TODO this is arbitrary
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
@@ -65,9 +66,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
         NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
-        while (bytes > 0 || CFDataGetLength(data) < size) { //todo, size is too high?
-            if (bytes > 0) {
-                CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
+        while (1) {
+            CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
+            if (CFDataGetLength(data) >= 32) {
+                UInt8 lastBytes[32];
+                CFDataGetBytes(data, CFRangeMake(CFDataGetLength(data) - 32, 32), lastBytes);
+                NSString *lastString = [[NSString alloc] initWithBytes:lastBytes length:32 encoding:NSUTF8StringEncoding];
+                if ([lastString containsString:@"CopyOut(buffer_num="] && [lastString hasSuffix:@")]"]) {
+                    shutdown(handle, SHUT_RD);
+                    break;
+                }
             }
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
