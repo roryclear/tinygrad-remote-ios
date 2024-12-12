@@ -73,7 +73,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSInteger size = CFStringGetIntValue(content_length);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
         NSInteger header_idx = -1;
-        while (bytes > 0) {
+        while (1) {
             CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
             if (header_idx == -1) {
                 CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
@@ -179,8 +179,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             } else if ([x hasPrefix:@"ProgramFree"]) {
                 [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
             } else if ([x hasPrefix:@"ProgramExec"]) {
-                id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
-                id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+                id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
+                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
                 [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
                 for(int i = 0; i < values[@"bufs"].count; i++){
                     [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
@@ -193,14 +193,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
                 [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
                 [encoder endEncoding];
-                [commandBuffer commit];
+                [command_buffer commit];
                 if([values[@"wait"][0] isEqualToString:@"True"]) {
-                    [commandBuffer waitUntilCompleted];
-                    float time = (float)(commandBuffer.GPUEndTime - commandBuffer.GPUStartTime);
-                    const char *timeCString = [[NSString stringWithFormat:@"%e", time] UTF8String];
-                    sendHTTPResponse(handle, timeCString, strlen(timeCString));
+                    [command_buffer waitUntilCompleted];
+                    float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
+                    const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    sendHTTPResponse(handle, time_string, strlen(time_string));
                 }
-                [mtl_buffers_in_flight addObject: commandBuffer];
+                [mtl_buffers_in_flight addObject: command_buffer];
             }
         }
     }
