@@ -49,7 +49,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 200000;
+    timeout.tv_usec = 5000; //TODO this is arbitrary
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
