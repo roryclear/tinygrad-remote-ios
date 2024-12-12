@@ -33,17 +33,12 @@ id<MTLCommandQueue> mtl_queue;
     address.sin_len = sizeof(address);
     address.sin_port = htons(6667);  // use same port on tinygrad
     address.sin_addr.s_addr = INADDR_ANY;
-    CFDataRef addressData = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
-    while (CFSocketSetAddress(self.socket, addressData) != kCFSocketSuccess) {
-        sleep(1);
-    }
-    CFRelease(addressData);
+    CFDataRef address_data = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
+    while (CFSocketSetAddress(self.socket, address_data) != kCFSocketSuccess) sleep(1);
     CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, self.socket, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-    CFRelease(source);
     NSLog(@"HTTP Server started on port 6667.");
 }
-
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
@@ -54,17 +49,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
-    CFDataRef dataRef = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes);
-    CFHTTPMessageRef httpRequest = CFHTTPMessageCreateEmpty(NULL, TRUE);
-    CFHTTPMessageAppendBytes(httpRequest, CFDataGetBytePtr(dataRef), CFDataGetLength(dataRef));
-    NSString *requestPath = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(httpRequest) path];
-    if ([requestPath hasPrefix:@"/renderer"]) {
+    CFDataRef data_ref = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes);
+    CFHTTPMessageRef http_request = CFHTTPMessageCreateEmpty(NULL, TRUE);
+    CFHTTPMessageAppendBytes(http_request, CFDataGetBytePtr(data_ref), CFDataGetLength(data_ref));
+    NSString *request_path = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(http_request) path];
+    if ([request_path hasPrefix:@"/renderer"]) {
         char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]";
         send(handle, response, strlen(response), 0);
         close(handle);
-    } else if ([requestPath hasPrefix:@"/batch"]) {
-        CFStringRef contentLengthHeader = CFHTTPMessageCopyHeaderFieldValue(httpRequest, CFSTR("Content-Length"));
-        NSInteger size = CFStringGetIntValue(contentLengthHeader); CFRelease(contentLengthHeader);
+    } else if ([request_path hasPrefix:@"/batch"]) {
+        CFStringRef content_length = CFHTTPMessageCopyHeaderFieldValue(http_request, CFSTR("Content-Length"));
+        NSInteger size = CFStringGetIntValue(content_length);
         CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
         NSInteger header_idx = -1;
         while (1) {
@@ -89,7 +84,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSData *rangeData;
         NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
         NSInteger ptr = 0;
-        NSString *stringData;
+        NSString *string_data;
         NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
         while (ptr < length) {
             NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:0x28 - 0x20];
@@ -106,17 +101,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             ptr += 0x28 + datalen;
         }
         CFRelease(data);
-        stringData = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
+        string_data = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
         NSMutableArray *_q = [NSMutableArray array];
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
         __block NSInteger lastIndex = 0;
-        [regex enumerateMatchesInString:stringData options:0 range:NSMakeRange(0, stringData.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
+        [regex enumerateMatchesInString:string_data options:0 range:NSMakeRange(0, string_data.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
             NSRange range = NSMakeRange(lastIndex, match.range.location - lastIndex);
-            [_q addObject:[[stringData substringWithRange:range] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
+            [_q addObject:[[string_data substringWithRange:range] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
             lastIndex = match.range.location;
         }];
-        [_q addObject:[[stringData substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
+        [_q addObject:[[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
 
         for (NSString *x in _q) {
             NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
@@ -128,14 +123,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 NSRange range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
                 NSString *contents = [x substringWithRange:range];
                 NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
-                NSMutableArray<NSString *> *extractedValues = [NSMutableArray array];
+                NSMutableArray<NSString *> *extracted_values = [NSMutableArray array];
                 for (NSString *value in rawValues) {
-                    NSString *trimmedValue = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                    if (trimmedValue.length > 0) {
-                        [extractedValues addObject:trimmedValue];
+                    NSString *trimmed_value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (trimmed_value.length > 0) {
+                        [extracted_values addObject:trimmed_value];
                     }
                 }
-                values[key] = [extractedValues copy];
+                values[key] = [extracted_values copy];
             }];
 
             if ([x hasPrefix:@"BufferAlloc"]) {
@@ -154,13 +149,13 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 const void *rawData = buffer.contents;
                 size_t bufferSize = buffer.length;
-                char responseHeader[256];
-                snprintf(responseHeader, sizeof(responseHeader),
+                char response_header[256];
+                snprintf(response_header, sizeof(response_header),
                          "HTTP/1.1 200 OK\r\n"
                          "Content-Type: text/plain\r\n"
                          "Content-Length: %zu\r\n"
                          "Connection: close\r\n\r\n", bufferSize);
-                send(handle, responseHeader, strlen(responseHeader), 0);
+                send(handle, response_header, strlen(response_header), 0);
                 send(handle, rawData, bufferSize, 0);
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
@@ -182,19 +177,19 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
             } else if ([x hasPrefix:@"ProgramExec"]) {
                 id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
-                id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-                [computeEncoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
+                id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+                [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
                 for(int i = 0; i < values[@"bufs"].count; i++){
-                    [computeEncoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
+                    [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
                 }
                 for (int i = 0; i < values[@"vals"].count; i++) {
                     NSInteger value = [values[@"vals"][i] integerValue];
-                    [computeEncoder setBytes:&value length:sizeof(NSInteger) atIndex:i + values[@"bufs"].count];
+                    [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + values[@"bufs"].count];
                 }
-                MTLSize gridSize = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
-                MTLSize threadGroupSize = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
-                [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadGroupSize];
-                [computeEncoder endEncoding];
+                MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
+                MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
+                [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
+                [encoder endEncoding];
                 [commandBuffer commit];
                 if([values[@"wait"][0] isEqualToString:@"True"]) {
                     [commandBuffer waitUntilCompleted];
