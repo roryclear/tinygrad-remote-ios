@@ -160,6 +160,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 const void *rawData = buffer.contents;
                 sendHTTPResponse(handle, rawData, buffer.length);
+                return;
             } else if ([x hasPrefix:@"ProgramAlloc"]) {
                 if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
                 NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
@@ -203,6 +204,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [mtl_buffers_in_flight addObject: command_buffer];
             }
         }
+        sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
     }
 }
 @end
