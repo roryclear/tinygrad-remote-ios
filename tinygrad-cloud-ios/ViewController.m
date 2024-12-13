@@ -52,8 +52,8 @@ void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t data
     close(handle);
 }
 
-NSMutableDictionary<NSString *, NSArray<NSString *> *> *extractValues(NSString *x) {
-    NSMutableDictionary<NSString *, NSArray<NSString *> *> *values = [@{@"op": @[[x componentsSeparatedByString:@"("][0]]} mutableCopy];
+NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
+    NSMutableDictionary<NSString *, id> *values = [@{@"op": [x componentsSeparatedByString:@"("][0]} mutableCopy];
     NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
         @"local_sizes": @"local_size=\\(([^)]+)\\)",@"wait": @"wait=(True|False)",@"bufs": @"bufs=\\(([^)]+)\\)",@"vals": @"vals=\\(([^)]+)\\)",
         @"buffer_num": @"buffer_num=(\\d+)",@"size": @"size=(\\d+)"};
@@ -83,7 +83,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
     ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
     buffer[bytes] = '\0';
@@ -150,15 +149,15 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
 
         for (NSMutableDictionary *values in _q) {
-            if ([values[@"op"][0] isEqualToString:@"BufferAlloc"]) {
+            if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
                 [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
-            } else if ([values[@"op"][0] isEqualToString:@"BufferFree"]) {
+            } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
                 [buffers removeObjectForKey: values[@"buffer_num"][0]];
-            } else if ([values[@"op"][0] isEqualToString:@"CopyIn"]) {
+            } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
                 id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 NSData *data = _h[values[@"datahash"][0]];
                 memcpy(buffer.contents, data.bytes, data.length);
-            } else if ([values[@"op"][0] isEqualToString:@"CopyOut"]) {
+            } else if ([values[@"op"] isEqualToString:@"CopyOut"]) {
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
@@ -167,7 +166,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 const void *rawData = buffer.contents;
                 sendHTTPResponse(handle, rawData, buffer.length);
                 return;
-            } else if ([values[@"op"][0] isEqualToString:@"ProgramAlloc"]) {
+            } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
                 if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
                 NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
@@ -183,9 +182,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                                                                                 reflection:&reflection
                                                                                                      error:&error];
                 [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([values[@"op"][0] isEqualToString:@"ProgramFree"]) {
+            } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
                 [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([values[@"op"][0] isEqualToString:@"ProgramExec"]) {
+            } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
                 id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
                 [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
