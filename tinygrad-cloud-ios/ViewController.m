@@ -61,11 +61,9 @@ NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
         NSTextCheckingResult *match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
         if (match) {
-            NSRange range = [match rangeAtIndex:1];
-            NSString *contents = [x substringWithRange:range];
-            NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
+            NSString *contents = [x substringWithRange:[match rangeAtIndex:1]];
             NSMutableArray<NSString *> *extracted_values = [NSMutableArray array];
-            for (NSString *value in rawValues) {
+            for (NSString *value in [contents componentsSeparatedByString:@","]) {
                 NSString *trimmed_value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
                 if (trimmed_value.length > 0) {
                     [extracted_values addObject:trimmed_value];
@@ -76,7 +74,6 @@ NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
     }];
     return values;
 }
-
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
