@@ -1,6 +1,6 @@
 # [tinygrad](https://github.com/tinygrad/tinygrad) host for iOS
 
-Run tinygrad models using your iPhone or iPad's GPU
+Run tinygrad code using your iPhone or iPad's GPU
 
 ## steps
 1. install and open this app on your iPhone or iPad
