@@ -4,7 +4,7 @@ Run tinygrad models using your iPhone or iPad's GPU
 
 ## steps
 1. install and open this app on your iPhone or iPad
-2. install tinygrad on a computer connected to the same wifi network
+2. install [tinygrad](https://github.com/tinygrad/tinygrad) on a computer connected to the same wifi network
 
 3. run any tinygrad code
 ```sh
