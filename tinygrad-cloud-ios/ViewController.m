@@ -84,11 +84,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     }
                 }
             }
-            if(CFDataGetLength(data) + header_idx >= size) break;
+            if(CFDataGetLength(data) >= size + header_idx) break;
             bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
         shutdown(handle, SHUT_RD);
-
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
         const UInt8 *bytes = CFDataGetBytePtr(data);
         CFIndex length = CFDataGetLength(data);
