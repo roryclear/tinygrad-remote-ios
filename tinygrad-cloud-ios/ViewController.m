@@ -49,6 +49,7 @@ void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t data
              "Connection: close\r\n\r\n", dataSize);
     send(handle, response_header, strlen(response_header), 0);
     send(handle, data, dataSize, 0);
+    close(handle);
 }
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
