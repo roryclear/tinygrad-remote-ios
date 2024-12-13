@@ -52,6 +52,32 @@ void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t data
     close(handle);
 }
 
+NSMutableDictionary<NSString *, NSArray<NSString *> *> *extractValues(NSString *x) {
+    NSMutableDictionary<NSString *, NSArray<NSString *> *> *values = [@{@"op": @[[x componentsSeparatedByString:@"("][0]]} mutableCopy];
+    NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
+        @"local_sizes": @"local_size=\\(([^)]+)\\)",@"wait": @"wait=(True|False)",@"bufs": @"bufs=\\(([^)]+)\\)",@"vals": @"vals=\\(([^)]+)\\)",
+        @"buffer_num": @"buffer_num=(\\d+)",@"size": @"size=(\\d+)"};
+    [patterns enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *pattern, BOOL *stop) {
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
+        NSTextCheckingResult *match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
+        if (match) {
+            NSRange range = [match rangeAtIndex:1];
+            NSString *contents = [x substringWithRange:range];
+            NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
+            NSMutableArray<NSString *> *extracted_values = [NSMutableArray array];
+            for (NSString *value in rawValues) {
+                NSString *trimmed_value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed_value.length > 0) {
+                    [extracted_values addObject:trimmed_value];
+                }
+            }
+            values[key] = [extracted_values copy];
+        }
+    }];
+    return values;
+}
+
+
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
     char buffer[1024 * 500] = {0};
@@ -92,7 +118,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
         const UInt8 *bytes = CFDataGetBytePtr(data);
         CFIndex length = CFDataGetLength(data);
-        NSData *rangeData;
+        NSData *range_data;
         NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
         NSInteger ptr = 0;
         NSString *string_data;
@@ -107,52 +133,32 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             for (int i = 0; i < 0x20; i++) {
                 [datahash appendFormat:@"%02x", datahash_bytes[i]];
             }
-            rangeData = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
-            _h[datahash] = rangeData;
+            range_data = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
+            _h[datahash] = range_data;
             ptr += 0x28 + datalen;
         }
         CFRelease(data);
-        string_data = [[NSString alloc] initWithData:rangeData encoding:NSUTF8StringEncoding];
+        string_data = [[NSString alloc] initWithData:range_data encoding:NSUTF8StringEncoding];
         NSMutableArray *_q = [NSMutableArray array];
         NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
         __block NSInteger lastIndex = 0;
         [regex enumerateMatchesInString:string_data options:0 range:NSMakeRange(0, string_data.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-            NSRange range = NSMakeRange(lastIndex, match.range.location - lastIndex);
-            [_q addObject:[[string_data substringWithRange:range] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
+            [_q addObject:extractValues([[string_data substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
             lastIndex = match.range.location;
         }];
-        [_q addObject:[[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]];
+        [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
 
-        for (NSString *x in _q) {
-            NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
-                @"local_sizes": @"local_size=\\(([^)]+)\\)",@"wait": @"wait=(True|False)",@"bufs": @"bufs=\\(([^)]+)\\)",@"vals": @"vals=\\(([^)]+)\\)",
-                @"buffer_num": @"buffer_num=(\\d+)",@"size": @"size=(\\d+)"};
-            NSMutableDictionary<NSString *, NSArray<NSString *> *> *values = [NSMutableDictionary dictionary];
-            [patterns enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *pattern, BOOL *stop) {
-                NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-                NSRange range = [[regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)] rangeAtIndex:1];
-                NSString *contents = [x substringWithRange:range];
-                NSArray<NSString *> *rawValues = [contents componentsSeparatedByString:@","];
-                NSMutableArray<NSString *> *extracted_values = [NSMutableArray array];
-                for (NSString *value in rawValues) {
-                    NSString *trimmed_value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                    if (trimmed_value.length > 0) {
-                        [extracted_values addObject:trimmed_value];
-                    }
-                }
-                values[key] = [extracted_values copy];
-            }];
-
-            if ([x hasPrefix:@"BufferAlloc"]) {
+        for (NSMutableDictionary *values in _q) {
+            if ([values[@"op"][0] isEqualToString:@"BufferAlloc"]) {
                 [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
-            } else if ([x hasPrefix:@"BufferFree"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"BufferFree"]) {
                 [buffers removeObjectForKey: values[@"buffer_num"][0]];
-            } else if ([x hasPrefix:@"CopyIn"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"CopyIn"]) {
                 id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
                 NSData *data = _h[values[@"datahash"][0]];
                 memcpy(buffer.contents, data.bytes, data.length);
-            } else if ([x hasPrefix:@"CopyOut"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"CopyOut"]) {
                 for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                     [mtl_buffers_in_flight[i] waitUntilCompleted];
                 }
@@ -161,7 +167,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 const void *rawData = buffer.contents;
                 sendHTTPResponse(handle, rawData, buffer.length);
                 return;
-            } else if ([x hasPrefix:@"ProgramAlloc"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"ProgramAlloc"]) {
                 if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
                 NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
                 NSError *error = nil;
@@ -177,18 +183,18 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                                                                                                 reflection:&reflection
                                                                                                      error:&error];
                 [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([x hasPrefix:@"ProgramFree"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"ProgramFree"]) {
                 [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([x hasPrefix:@"ProgramExec"]) {
+            } else if ([values[@"op"][0] isEqualToString:@"ProgramExec"]) {
                 id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
                 [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
-                for(int i = 0; i < values[@"bufs"].count; i++){
+                for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
                     [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
                 }
-                for (int i = 0; i < values[@"vals"].count; i++) {
+                for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
                     NSInteger value = [values[@"vals"][i] integerValue];
-                    [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + values[@"bufs"].count];
+                    [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
                 }
                 MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
                 MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
