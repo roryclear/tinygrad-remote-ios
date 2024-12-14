@@ -144,7 +144,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             lastIndex = match.range.location;
         }];
         [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
-
         for (NSMutableDictionary *values in _q) {
             if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
                 [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
@@ -182,6 +181,11 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
                 [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
             } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
+                NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
+                if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
+                    sendHTTPResponse(handle, "inf", 3);
+                    return;
+                }
                 id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
                 id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
                 [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
