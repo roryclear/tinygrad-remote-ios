@@ -113,13 +113,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         shutdown(handle, SHUT_RD);
         CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
         const UInt8 *bytes = CFDataGetBytePtr(data);
-        CFIndex length = CFDataGetLength(data);
         NSData *range_data;
         NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
         NSInteger ptr = 0;
         NSString *string_data;
         NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
-        while (ptr < length) {
+        while (ptr < size) {
             NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:0x28 - 0x20];
             uint64_t datalen = 0;
             [slicedData getBytes:&datalen length:sizeof(datalen)];
