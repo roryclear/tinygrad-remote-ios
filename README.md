@@ -10,6 +10,9 @@ Run tinygrad code using your iPhone or iPad's GPU
 ```sh
 CLOUD=1 HOST={your iphone/ipad IP address}:6667 python3 examples/gpt2.py --model_size=gpt2
 ```
+
+Also try [YOLOv8 on tinygrad](https://github.com/tinygrad/tinygrad), by caching tinygrad cloud batches, models can be easily ran locally.
+
 ## notes
 - Max allowed app RAM < total RAM. An iPhone 13 (4GB RAM) cannot use over 2GB in a single app for example, it will crash. Each device has its own limit.
 - Metal cannot be ran in the background on iOS, the app must be open to run.
