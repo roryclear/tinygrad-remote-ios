@@ -88,7 +88,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     CFHTTPMessageAppendBytes(http_request, CFDataGetBytePtr(data_ref), CFDataGetLength(data_ref));
     NSString *request_path = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(http_request) path];
     if ([request_path hasPrefix:@"/properties"]) {
-        char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n{\"renderer\":[\"tinygrad.renderer.cstyle\", \"MetalRenderer\", []]}";
+        char *response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"remotedev\":\"METAL\",\"renderer\":[\"tinygrad.renderer.cstyle\",\"MetalRenderer\",[]],\"graph\":false}";
         send(handle, response, strlen(response), 0);
         close(handle);
     } else if ([request_path hasPrefix:@"/batch"]) {
