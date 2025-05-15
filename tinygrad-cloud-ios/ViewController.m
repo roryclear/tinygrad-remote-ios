@@ -75,146 +75,139 @@ NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
     return values;
 }
 
-static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data, void *info) {
-    CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data;
+static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
+    CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data_in;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 10;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
-    ssize_t bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
-    buffer[bytes] = '\0';
-    CFDataRef data_ref = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes);
+    ssize_t bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
+    buffer[bytes_in] = '\0';
+    CFDataRef data_ref = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes_in);
     CFHTTPMessageRef http_request = CFHTTPMessageCreateEmpty(NULL, TRUE);
     CFHTTPMessageAppendBytes(http_request, CFDataGetBytePtr(data_ref), CFDataGetLength(data_ref));
-    NSString *request_path = [(__bridge_transfer NSURL *)CFHTTPMessageCopyRequestURL(http_request) path];
-    if ([request_path hasPrefix:@"/properties"]) {
-        char *response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"remotedev\":\"METAL\",\"renderer\":[\"tinygrad.renderer.cstyle\",\"MetalRenderer\",[]],\"graph\":false}";
-        send(handle, response, strlen(response), 0);
-        close(handle);
-    } else if ([request_path hasPrefix:@"/batch"]) {
-        CFStringRef content_length = CFHTTPMessageCopyHeaderFieldValue(http_request, CFSTR("Content-Length"));
-        NSInteger size = CFStringGetIntValue(content_length);
-        CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
-        NSInteger header_idx = -1;
-        while (1) {
-            CFDataAppendBytes(data, (UInt8 *)buffer, bytes);
-            if (header_idx == -1) {
-                CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
-                for (CFIndex i = 0; i <= CFDataGetLength(data) - CFDataGetLength(h_data); i++) {
-                    if (memcmp(CFDataGetBytePtr(data) + i, CFDataGetBytePtr(h_data), CFDataGetLength(h_data)) == 0) {
-                        header_idx = i + CFDataGetLength(h_data);
-                        break;
-                    }
+    CFStringRef content_length = CFHTTPMessageCopyHeaderFieldValue(http_request, CFSTR("Content-Length"));
+    NSInteger size = CFStringGetIntValue(content_length);
+    CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
+    NSInteger header_idx = -1;
+    while (1) {
+        CFDataAppendBytes(data, (UInt8 *)buffer, bytes_in);
+        if (header_idx == -1) {
+            CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
+            for (CFIndex i = 0; i <= CFDataGetLength(data) - CFDataGetLength(h_data); i++) {
+                if (memcmp(CFDataGetBytePtr(data) + i, CFDataGetBytePtr(h_data), CFDataGetLength(h_data)) == 0) {
+                    header_idx = i + CFDataGetLength(h_data);
+                    break;
                 }
             }
-            if(CFDataGetLength(data) >= size + header_idx) break;
-            bytes = recv(handle, buffer, sizeof(buffer) - 1, 0);
         }
-        shutdown(handle, SHUT_RD);
-        CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
-        const UInt8 *bytes = CFDataGetBytePtr(data);
-        NSData *range_data;
-        NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
-        NSInteger ptr = 0;
-        NSString *string_data;
-        NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
-        while (ptr < size) {
-            NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:0x28 - 0x20];
-            uint64_t datalen = 0;
-            [slicedData getBytes:&datalen length:sizeof(datalen)];
-            datalen = CFSwapInt64LittleToHost(datalen);
-            const UInt8 *datahash_bytes = bytes + ptr;
-            datahash = [NSMutableString stringWithCapacity:0x40];
-            for (int i = 0; i < 0x20; i++) {
-                [datahash appendFormat:@"%02x", datahash_bytes[i]];
-            }
-            range_data = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
-            _h[datahash] = range_data;
-            ptr += 0x28 + datalen;
-        }
-        CFRelease(data);
-        string_data = [[NSString alloc] initWithData:range_data encoding:NSUTF8StringEncoding];
-        NSMutableArray *_q = [NSMutableArray array];
-        NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec", @"GetProperties"];
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
-        __block NSInteger lastIndex = 0;
-        [regex enumerateMatchesInString:string_data options:0 range:NSMakeRange(0, string_data.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-            [_q addObject:extractValues([[string_data substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
-            lastIndex = match.range.location;
-        }];
-        [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
-        for (NSMutableDictionary *values in _q) {
-            if ([values[@"op"] isEqualToString:@"GetProperties"]) {
-                char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False)";
-                send(handle, response, strlen(response), 0);
-                close(handle);
-                return;
-            } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
-                [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
-            } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
-                [buffers removeObjectForKey: values[@"buffer_num"][0]];
-            } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
-                id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
-                NSData *data = _h[values[@"datahash"][0]];
-                memcpy(buffer.contents, data.bytes, data.length);
-            } else if ([values[@"op"] isEqualToString:@"CopyOut"]) {
-                for(int i = 0; i < mtl_buffers_in_flight.count; i++){
-                    [mtl_buffers_in_flight[i] waitUntilCompleted];
-                }
-                [mtl_buffers_in_flight removeAllObjects];
-                id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
-                const void *rawData = buffer.contents;
-                sendHTTPResponse(handle, rawData, buffer.length);
-                return;
-            } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
-                if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
-                NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
-                NSError *error = nil;
-                id<MTLLibrary> library = [device newLibraryWithSource:prg
-                                                              options:nil
-                                                                error:&error];
-                MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-                descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];;
-                descriptor.supportIndirectCommandBuffers = YES;
-                MTLComputePipelineReflection *reflection = nil;
-                id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
-                                                                                                   options:MTLPipelineOptionNone
-                                                                                                reflection:&reflection
-                                                                                                     error:&error];
-                [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
-                [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
-            } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
-                NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
-                if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
-                    sendHTTPResponse(handle, "inf", 3);
-                    return;
-                }
-                id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
-                id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-                [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
-                for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
-                    [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
-                }
-                for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
-                    NSInteger value = [values[@"vals"][i] integerValue];
-                    [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
-                }
-                MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
-                MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
-                [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
-                [encoder endEncoding];
-                [command_buffer commit];
-                if([values[@"wait"][0] isEqualToString:@"True"]) {
-                    [command_buffer waitUntilCompleted];
-                    float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
-                    const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
-                    sendHTTPResponse(handle, time_string, strlen(time_string));
-                }
-                [mtl_buffers_in_flight addObject: command_buffer];
-            }
-        }
-        sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
+        if(CFDataGetLength(data) >= size + header_idx) break;
+        bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
     }
+    shutdown(handle, SHUT_RD);
+    CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
+    const UInt8 *bytes = CFDataGetBytePtr(data);
+    NSData *range_data;
+    NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
+    NSInteger ptr = 0;
+    NSString *string_data;
+    NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
+    while (ptr < size) {
+        NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:0x28 - 0x20];
+        uint64_t datalen = 0;
+        [slicedData getBytes:&datalen length:sizeof(datalen)];
+        datalen = CFSwapInt64LittleToHost(datalen);
+        const UInt8 *datahash_bytes = bytes + ptr;
+        datahash = [NSMutableString stringWithCapacity:0x40];
+        for (int i = 0; i < 0x20; i++) {
+            [datahash appendFormat:@"%02x", datahash_bytes[i]];
+        }
+        range_data = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
+        _h[datahash] = range_data;
+        ptr += 0x28 + datalen;
+    }
+    CFRelease(data);
+    string_data = [[NSString alloc] initWithData:range_data encoding:NSUTF8StringEncoding];
+    NSMutableArray *_q = [NSMutableArray array];
+    NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec", @"GetProperties"];
+    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
+    __block NSInteger lastIndex = 0;
+    [regex enumerateMatchesInString:string_data options:0 range:NSMakeRange(0, string_data.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
+        [_q addObject:extractValues([[string_data substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
+        lastIndex = match.range.location;
+    }];
+    [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
+    for (NSMutableDictionary *values in _q) {
+        if ([values[@"op"] isEqualToString:@"GetProperties"]) {
+            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False)";
+            send(handle, response, strlen(response), 0);
+            close(handle);
+            return;
+        } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
+            [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
+        } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
+            [buffers removeObjectForKey: values[@"buffer_num"][0]];
+        } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
+            id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
+            NSData *data = _h[values[@"datahash"][0]];
+            memcpy(buffer.contents, data.bytes, data.length);
+        } else if ([values[@"op"] isEqualToString:@"CopyOut"]) {
+            for(int i = 0; i < mtl_buffers_in_flight.count; i++){
+                [mtl_buffers_in_flight[i] waitUntilCompleted];
+            }
+            [mtl_buffers_in_flight removeAllObjects];
+            id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
+            const void *rawData = buffer.contents;
+            sendHTTPResponse(handle, rawData, buffer.length);
+            return;
+        } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
+            if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
+            NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
+            NSError *error = nil;
+            id<MTLLibrary> library = [device newLibraryWithSource:prg
+                                                          options:nil
+                                                            error:&error];
+            MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
+            descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];;
+            descriptor.supportIndirectCommandBuffers = YES;
+            MTLComputePipelineReflection *reflection = nil;
+            id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
+                                                                                               options:MTLPipelineOptionNone
+                                                                                            reflection:&reflection
+                                                                                                 error:&error];
+            [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
+        } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
+            [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
+        } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
+            NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
+            if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
+                sendHTTPResponse(handle, "inf", 3);
+                return;
+            }
+            id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
+            for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
+                [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
+            }
+            for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
+                NSInteger value = [values[@"vals"][i] integerValue];
+                [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
+            }
+            MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
+            MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
+            [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
+            [encoder endEncoding];
+            [command_buffer commit];
+            if([values[@"wait"][0] isEqualToString:@"True"]) {
+                [command_buffer waitUntilCompleted];
+                float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
+                const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                sendHTTPResponse(handle, time_string, strlen(time_string));
+            }
+            [mtl_buffers_in_flight addObject: command_buffer];
+        }
+    }
+    sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
 @end
