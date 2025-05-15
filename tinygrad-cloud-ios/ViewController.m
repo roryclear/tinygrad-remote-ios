@@ -135,7 +135,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         CFRelease(data);
         string_data = [[NSString alloc] initWithData:range_data encoding:NSUTF8StringEncoding];
         NSMutableArray *_q = [NSMutableArray array];
-        NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec"];
+        NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec", @"GetProperties"];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
         __block NSInteger lastIndex = 0;
         [regex enumerateMatchesInString:string_data options:0 range:NSMakeRange(0, string_data.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
@@ -144,7 +144,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         }];
         [_q addObject:extractValues([[string_data substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
         for (NSMutableDictionary *values in _q) {
-            if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
+            if ([values[@"op"] isEqualToString:@"GetProperties"]) {
+                char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False)";
+                send(handle, response, strlen(response), 0);
+                close(handle);
+                return;
+            } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
                 [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
             } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
                 [buffers removeObjectForKey: values[@"buffer_num"][0]];
