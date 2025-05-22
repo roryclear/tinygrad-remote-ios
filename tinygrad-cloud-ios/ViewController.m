@@ -40,6 +40,9 @@ id<MTLCommandQueue> mtl_queue;
     NSLog(@"HTTP Server started on port 6667.");
 }
 
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskPortrait; }
+- (BOOL)shouldAutorotate { return NO; }
+
 - (void)updateIPLabel:(UILabel *)label {
     struct ifaddrs *a = 0;
     getifaddrs(&a);
