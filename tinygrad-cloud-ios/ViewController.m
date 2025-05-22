@@ -3,6 +3,8 @@
 #import <netinet/in.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <ifaddrs.h>
+#import <arpa/inet.h>
 
 @interface ViewController ()
 @property (nonatomic) CFSocketRef socket;
@@ -16,6 +18,7 @@ NSMutableDictionary<NSString *, id> *buffers;
 NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 id<MTLCommandQueue> mtl_queue;
 
+
 - (void)viewDidLoad {
     pipeline_states = [[NSMutableDictionary alloc] init];
     buffers = [[NSMutableDictionary alloc] init];
@@ -23,21 +26,36 @@ id<MTLCommandQueue> mtl_queue;
     mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
     mtl_buffers_in_flight = [[NSMutableArray alloc] init];
     [super viewDidLoad];
+    UILabel *l = [[UILabel alloc] initWithFrame:self.view.bounds]; l.textAlignment = 1; l.numberOfLines = 0; [self.view addSubview:l];
+    [self updateIPLabel:l];
+    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *_) { [self updateIPLabel:l]; }];
+    UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem]; b.frame=CGRectMake(self.view.center.x-50,self.view.center.y+40,100,30); [b setTitle:@"Help" forState:0]; [b addAction:[UIAction actionWithHandler:^(__kindof UIAction *_) { [[UIApplication sharedApplication] openURL:[NSURL URLWithString:@"https://github.com/roryclear/tinygrad-remote-ios/blob/main/README.md"] options:@{} completionHandler:nil]; }] forControlEvents:UIControlEventTouchUpInside]; [self.view addSubview:b];
     self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
-    while (!self.socket) {
-        sleep(1);
-        self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
-    }
-    struct sockaddr_in address;
-    memset(&address, 0, sizeof(address));
-    address.sin_len = sizeof(address);
-    address.sin_port = htons(6667);  // use same port on tinygrad
-    address.sin_addr.s_addr = INADDR_ANY;
+    while (!self.socket) { sleep(1); self.socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
+    struct sockaddr_in address; memset(&address, 0, sizeof(address)); address.sin_len = sizeof(address); address.sin_port = htons(6667); address.sin_addr.s_addr = INADDR_ANY;
     CFDataRef address_data = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
     while (CFSocketSetAddress(self.socket, address_data) != kCFSocketSuccess) sleep(1);
     CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, self.socket, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
     NSLog(@"HTTP Server started on port 6667.");
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskPortrait; }
+- (BOOL)shouldAutorotate { return NO; }
+
+- (void)updateIPLabel:(UILabel *)label {
+    struct ifaddrs *a = 0;
+    getifaddrs(&a);
+    NSString *ip = nil;
+    while (a) {
+        if (a->ifa_addr->sa_family == AF_INET &&
+            [[NSString stringWithUTF8String:a->ifa_name] isEqualToString:@"en0"]) {
+            ip = [NSString stringWithUTF8String:inet_ntoa(((struct sockaddr_in *)a->ifa_addr)->sin_addr)];
+            break;
+        }
+        a = a->ifa_next;
+    }
+    label.text = ip ? [NSString stringWithFormat:@"device ip: %@:6667", ip] : @"Waiting for WiFi...";
 }
 
 void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
@@ -211,3 +229,4 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
 @end
+
