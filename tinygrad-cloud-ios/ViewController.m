@@ -20,6 +20,7 @@ id<MTLCommandQueue> mtl_queue;
 
 
 - (void)viewDidLoad {
+    [UIApplication sharedApplication].idleTimerDisabled = YES;
     pipeline_states = [[NSMutableDictionary alloc] init];
     buffers = [[NSMutableDictionary alloc] init];
     device = MTLCreateSystemDefaultDevice();
