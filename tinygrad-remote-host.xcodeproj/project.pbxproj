@@ -7,16 +7,16 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tinygrad-remote-ios.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-host.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tinygrad-remote-host.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-ios" target */ = {
+		BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-host" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-ios */;
+			target = BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-host */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -24,7 +24,7 @@
 		BE83FC342CFFB4FD00D60BBA /* tinygrad-cloud-ios */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-ios" target */,
+				BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-host" target */,
 			);
 			path = "tinygrad-cloud-ios";
 			sourceTree = "<group>";
@@ -53,7 +53,7 @@
 		BE83FC332CFFB4FD00D60BBA /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-ios.app */,
+				BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-host.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -61,9 +61,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-ios */ = {
+		BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-host */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = BE83FC4A2CFFB4FE00D60BBA /* Build configuration list for PBXNativeTarget "tinygrad-remote-ios" */;
+			buildConfigurationList = BE83FC4A2CFFB4FE00D60BBA /* Build configuration list for PBXNativeTarget "tinygrad-remote-host" */;
 			buildPhases = (
 				BE83FC2E2CFFB4FD00D60BBA /* Sources */,
 				BE83FC2F2CFFB4FD00D60BBA /* Frameworks */,
@@ -76,11 +76,11 @@
 			fileSystemSynchronizedGroups = (
 				BE83FC342CFFB4FD00D60BBA /* tinygrad-cloud-ios */,
 			);
-			name = "tinygrad-remote-ios";
+			name = "tinygrad-remote-host";
 			packageProductDependencies = (
 			);
 			productName = "tinygrad-cloud-ios";
-			productReference = BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-ios.app */;
+			productReference = BE83FC322CFFB4FD00D60BBA /* tinygrad-remote-host.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -97,7 +97,7 @@
 					};
 				};
 			};
-			buildConfigurationList = BE83FC2D2CFFB4FD00D60BBA /* Build configuration list for PBXProject "tinygrad-remote-ios" */;
+			buildConfigurationList = BE83FC2D2CFFB4FD00D60BBA /* Build configuration list for PBXProject "tinygrad-remote-host" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -111,7 +111,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-ios */,
+				BE83FC312CFFB4FD00D60BBA /* tinygrad-remote-host */,
 			);
 		};
 /* End PBXProject section */
@@ -312,7 +312,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		BE83FC2D2CFFB4FD00D60BBA /* Build configuration list for PBXProject "tinygrad-remote-ios" */ = {
+		BE83FC2D2CFFB4FD00D60BBA /* Build configuration list for PBXProject "tinygrad-remote-host" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BE83FC4D2CFFB4FE00D60BBA /* Debug */,
@@ -321,7 +321,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		BE83FC4A2CFFB4FE00D60BBA /* Build configuration list for PBXNativeTarget "tinygrad-remote-ios" */ = {
+		BE83FC4A2CFFB4FE00D60BBA /* Build configuration list for PBXNativeTarget "tinygrad-remote-host" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BE83FC4B2CFFB4FE00D60BBA /* Debug */,
