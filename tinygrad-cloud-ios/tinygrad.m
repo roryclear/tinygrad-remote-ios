@@ -119,7 +119,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                     break;
                 }
             }
-            CFRelease(h_data);
         }
         if(CFDataGetLength(data) >= size + header_idx) break;
         bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
@@ -128,7 +127,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     shutdown(handle, SHUT_RD);
     CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
     const UInt8 *bytes = CFDataGetBytePtr(data);
-    NSData *range_data = nil; // Initialize to nil
+    NSData *range_data = nil;
     NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
     NSInteger ptr = 0;
     NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
@@ -138,7 +137,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         [slicedData getBytes:&datalen length:sizeof(datalen)];
         datalen = CFSwapInt64LittleToHost(datalen);
         const UInt8 *datahash_bytes = bytes + ptr;
-        [datahash setString:@""];
+        datahash = [NSMutableString stringWithCapacity:0x40];
         for (int i = 0; i < 0x20; i++) {
             [datahash appendFormat:@"%02x", datahash_bytes[i]];
         }
@@ -171,25 +170,17 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
             id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
             NSData *data = _h[values[@"datahash"][0]];
-            if (buffer && data) { // Add nil check
-                memcpy(buffer.contents, data.bytes, data.length);
-            }
+            memcpy(buffer.contents, data.bytes, data.length);
         } else if ([values[@"op"] isEqualToString:@"CopyOut"]) {
             for(int i = 0; i < mtl_buffers_in_flight.count; i++){
                 [mtl_buffers_in_flight[i] waitUntilCompleted];
             }
             [mtl_buffers_in_flight removeAllObjects];
             id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
-            if (buffer) { // Add nil check
-                const void *rawData = buffer.contents;
-                sendHTTPResponse(handle, rawData, buffer.length);
-            } else {
-                sendHTTPResponse(handle, "Error: Buffer not found", strlen("Error: Buffer not found"));
-            }
+            sendHTTPResponse(handle, buffer.contents, buffer.length);
             return;
         } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
-            NSArray *programKey = @[values[@"name"][0],values[@"datahash"][0]];
-            if ([pipeline_states objectForKey:programKey]) continue;
+            if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
             NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithSource:prg
@@ -205,35 +196,20 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];
             descriptor.supportIndirectCommandBuffers = YES;
             MTLComputePipelineReflection *reflection = nil;
-            id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor
-                                                                                                options:MTLPipelineOptionNone
-                                                                                             reflection:&reflection
-                                                                                                  error:&error];
-            if (error || !pipeline_state) {
-                NSLog(@"Error creating compute pipeline state: %@", error);
-                 sendHTTPResponse(handle, "Error: Pipeline state creation failed", strlen("Error: Pipeline state creation failed"));
-                close(handle);
-                return;
-            }
-            [pipeline_states setObject:pipeline_state forKey:programKey];
+            id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
+            [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
         } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
             [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
         } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
             NSArray *programKey = @[values[@"name"][0],values[@"datahash"][0]];
-            id<MTLComputePipelineState> current_pipeline_state = pipeline_states[programKey];
-            if (!current_pipeline_state) {
-                sendHTTPResponse(handle, "Error: Pipeline state not found", strlen("Error: Pipeline state not found"));
-                close(handle);
-                return;
-            }
-            NSInteger max_size = [current_pipeline_state maxTotalThreadsPerThreadgroup];
+            NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
             if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
                 sendHTTPResponse(handle, "inf", 3);
                 return;
             }
             id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
             id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            [encoder setComputePipelineState:current_pipeline_state];
+            [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
             for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
                 id<MTLBuffer> buffer = buffers[values[@"bufs"][i]];
                 if (buffer) { // Add nil check
@@ -258,10 +234,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [mtl_buffers_in_flight addObject: command_buffer];
         }
     }
-    sendHTTPResponse(handle, (const char[]){0x00}, 1);
-    CFRelease(data_ref); // Release data_ref
-    CFRelease(http_request); // Release http_request
-    CFRelease(content_length); // Release content_length
+    sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
 
 @end
