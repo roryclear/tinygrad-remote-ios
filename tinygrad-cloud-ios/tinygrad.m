@@ -14,13 +14,12 @@ static CFSocketRef _socket;
 
 @implementation tinygrad
 
-+ (NSString *)start {
++ (void)start {
     static tinygrad *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         sharedInstance = [[self alloc] init];
     });
-    return [sharedInstance startServer];
 }
 
 - (instancetype)init {
@@ -44,7 +43,7 @@ static CFSocketRef _socket;
     return self;
 }
 
-- (NSString *)startServer {
++ (NSString *)getIP {
     struct ifaddrs *a = 0;
     getifaddrs(&a);
     NSString *ip = nil;

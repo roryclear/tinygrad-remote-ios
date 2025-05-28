@@ -3,7 +3,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface tinygrad : NSObject
-+ (NSString *)start;
++ (NSString *)getIP;
++ (void)start;
 @end
 
 NS_ASSUME_NONNULL_END

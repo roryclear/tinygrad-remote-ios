@@ -5,6 +5,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [tinygrad start];
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 
     UILabel *l = [[UILabel alloc] initWithFrame:self.view.bounds];
@@ -21,10 +22,10 @@
     [self.view addSubview:b];
 
     // Use the tinygrad shared instance
-    l.text = [tinygrad start];
+    l.text = [tinygrad getIP];
 
     [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *_) {
-        l.text = [tinygrad start];
+        l.text = [tinygrad getIP];
     }];
 }
 
