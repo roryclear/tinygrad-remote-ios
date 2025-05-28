@@ -18,6 +18,12 @@
         self.textView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
         self.textView.editable = YES;
         self.textView.translatesAutoresizingMaskIntoConstraints = NO;
+        
+        UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, UIScreen.mainScreen.bounds.size.width, 44)];
+        UIBarButtonItem *flexSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
+        UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissKeyboard)];
+        toolbar.items = @[flexSpace, doneButton];
+        [self.textView setInputAccessoryView:toolbar];
 
         // Buttons
         UIButton *runButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -65,6 +71,10 @@
                                                    object:nil];
     }
     return self;
+}
+
+- (void)dismissKeyboard {
+    [self.textView resignFirstResponder];
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification {
