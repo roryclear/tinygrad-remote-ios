@@ -144,16 +144,53 @@
 - (void)showKernelCode:(NSString *)code title:(NSString *)title {
     UIViewController *codeVC = [[UIViewController alloc] init];
     codeVC.title = title;
-    UITextView *textView = [[UITextView alloc] initWithFrame:codeVC.view.bounds];
+    codeVC.view.backgroundColor = [UIColor systemBackgroundColor];
+
+    // Create editable text view
+    UITextView *textView = [[UITextView alloc] initWithFrame:CGRectZero];
     textView.text = code;
     textView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
-    textView.editable = NO;
-    textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    textView.editable = YES;
+    textView.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Create buttons
+    UIButton *runButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [runButton setTitle:@"Run" forState:UIControlStateNormal];
+    runButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    runButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIButton *saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [saveButton setTitle:@"Save" forState:UIControlStateNormal];
+    saveButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+    saveButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Button container
+    UIStackView *buttonStack = [[UIStackView alloc] initWithArrangedSubviews:@[runButton, saveButton]];
+    buttonStack.axis = UILayoutConstraintAxisHorizontal;
+    buttonStack.distribution = UIStackViewDistributionFillEqually;
+    buttonStack.spacing = 20;
+    buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Add subviews
     [codeVC.view addSubview:textView];
+    [codeVC.view addSubview:buttonStack];
 
-    [self presentViewController:codeVC animated:YES completion:nil];
+    // Set up layout constraints
+    [NSLayoutConstraint activateConstraints:@[
+        [textView.topAnchor constraintEqualToAnchor:codeVC.view.safeAreaLayoutGuide.topAnchor],
+        [textView.leadingAnchor constraintEqualToAnchor:codeVC.view.leadingAnchor constant:10],
+        [textView.trailingAnchor constraintEqualToAnchor:codeVC.view.trailingAnchor constant:-10],
+        [textView.bottomAnchor constraintEqualToAnchor:buttonStack.topAnchor constant:-10],
+
+        [buttonStack.leadingAnchor constraintEqualToAnchor:codeVC.view.leadingAnchor constant:20],
+        [buttonStack.trailingAnchor constraintEqualToAnchor:codeVC.view.trailingAnchor constant:-20],
+        [buttonStack.bottomAnchor constraintEqualToAnchor:codeVC.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
+        [buttonStack.heightAnchor constraintEqualToConstant:44],
+    ]];
+
+    // Push onto navigation stack
+    [self.navigationController pushViewController:codeVC animated:YES];
 }
-
 
 @end
 
