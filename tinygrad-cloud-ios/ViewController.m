@@ -20,6 +20,7 @@
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.dataSource = self;
+    self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
 
     self.remoteSwitch = [[UISwitch alloc] init];
@@ -120,6 +121,18 @@
     return cell;
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 1) {
+        NSArray<NSString *> *keys = [tinygrad getKernelKeys];
+        if (indexPath.row < keys.count) {
+            NSString *key = keys[indexPath.row];
+            NSString *code = [tinygrad getKernelCodeForKey:key];
+            [self showKernelCode:code title:key];
+        }
+    }
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
     return UIInterfaceOrientationMaskPortrait;
 }
@@ -127,6 +140,20 @@
 - (BOOL)shouldAutorotate {
     return NO;
 }
+
+- (void)showKernelCode:(NSString *)code title:(NSString *)title {
+    UIViewController *codeVC = [[UIViewController alloc] init];
+    codeVC.title = title;
+    UITextView *textView = [[UITextView alloc] initWithFrame:codeVC.view.bounds];
+    textView.text = code;
+    textView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
+    textView.editable = NO;
+    textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [codeVC.view addSubview:textView];
+
+    [self presentViewController:codeVC animated:YES completion:nil];
+}
+
 
 @end
 

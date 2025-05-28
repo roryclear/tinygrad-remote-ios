@@ -33,6 +33,9 @@ static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
 + (NSArray<NSString *> *)getKernelKeys {
     return [kernel_keys copy];
 }
++ (NSString *)getKernelCodeForKey:(NSString *)key {
+    return saved_kernels[key];
+}
 
 - (instancetype)init {
     self = [super init];

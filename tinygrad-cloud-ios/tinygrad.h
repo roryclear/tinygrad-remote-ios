@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)toggleSaveKernels;
 + (BOOL)isSaveKernelsEnabled;
 + (NSArray<NSString *> *)getKernelKeys;
++ (NSString *)getKernelCodeForKey:(NSString *)key; //todo do directly?
 @end
 
 NS_ASSUME_NONNULL_END
