@@ -3,7 +3,8 @@
 
 @interface ViewController () <UITableViewDataSource>
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) UISwitch *toggleSwitch;
+@property (nonatomic, strong) UISwitch *remoteSwitch;
+@property (nonatomic, strong) UISwitch *kernelsSwitch;
 @property (nonatomic, strong) UILabel *ipLabel;
 @property (nonatomic, strong) NSTimer *ipTimer;
 @property (nonatomic, assign) BOOL isRemoteEnabled;
@@ -21,15 +22,26 @@
     self.tableView.dataSource = self;
     [self.view addSubview:self.tableView];
 
-    self.toggleSwitch = [[UISwitch alloc] init];
-    [self.toggleSwitch addTarget:self action:@selector(toggleChanged:) forControlEvents:UIControlEventValueChanged];
+    self.remoteSwitch = [[UISwitch alloc] init];
+    [self.remoteSwitch addTarget:self action:@selector(remoteToggleChanged:) forControlEvents:UIControlEventValueChanged];
+
+    self.kernelsSwitch = [[UISwitch alloc] init];
+    [self.kernelsSwitch addTarget:self action:@selector(kernelsToggleChanged:) forControlEvents:UIControlEventValueChanged];
 
     self.ipLabel = [[UILabel alloc] init];
     self.ipLabel.text = @"Turn on tinygrad remote";
     self.ipLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
+    
+    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *_) {
+        if ([tinygrad isSaveKernelsEnabled]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.tableView reloadData];
+            });
+        }
+    }];
 }
 
-- (void)toggleChanged:(UISwitch *)sender {
+- (void)remoteToggleChanged:(UISwitch *)sender {
     if (sender.isOn) {
         [tinygrad start];
         self.isRemoteEnabled = YES;
@@ -45,6 +57,10 @@
     [self.tableView reloadData];
 }
 
+- (void)kernelsToggleChanged:(UISwitch *)sender {
+    [tinygrad toggleSaveKernels];
+}
+
 - (void)updateIPLabel {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.ipLabel.text = [tinygrad getIP];
@@ -53,26 +69,52 @@
 
 #pragma mark - UITableViewDataSource
 
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return [tinygrad isSaveKernelsEnabled] ? 2 : 1;
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 1;
+    if (section == 0) return 2; // switches
+    if (section == 1) return [tinygrad getKernelKeys].count; // kernel keys
+    return 0;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 1 && [tinygrad isSaveKernelsEnabled]) {
+        return @"Tinygrad Kernels";
+    }
+    return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *identifier = @"CustomCell";
+    static NSString *identifier = @"Cell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+    }
 
-        // Add the label to the left
-        self.ipLabel.frame = CGRectMake(15, 0, cell.contentView.bounds.size.width - 100, 44);
-        self.ipLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleRightMargin;
-        [cell.contentView addSubview:self.ipLabel];
+    [cell.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+    cell.textLabel.text = @"";
 
-        // Add the switch to the right
-        self.toggleSwitch.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
-        self.toggleSwitch.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-        [cell.contentView addSubview:self.toggleSwitch];
+    if (indexPath.section == 0) {
+        // Remote and Kernel Switches
+        if (indexPath.row == 0) {
+            [cell.contentView addSubview:self.ipLabel];
+            self.ipLabel.frame = CGRectMake(15, 0, cell.contentView.bounds.size.width - 100, 44);
+            UISwitch *toggle = self.remoteSwitch;
+            toggle.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
+            [cell.contentView addSubview:toggle];
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = @"Show tinygrad kernels";
+            UISwitch *toggle = self.kernelsSwitch;
+            toggle.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
+            [cell.contentView addSubview:toggle];
+        }
+    } else if (indexPath.section == 1) {
+        NSArray<NSString *> *keys = [tinygrad getKernelKeys];
+        if (indexPath.row < keys.count) {
+            cell.textLabel.text = keys[indexPath.row];
+        }
     }
 
     return cell;

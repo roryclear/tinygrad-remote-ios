@@ -11,6 +11,10 @@ static NSMutableDictionary<NSString *, id> *buffers;
 static NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 static id<MTLCommandQueue> mtl_queue;
 static CFSocketRef _socket;
+static BOOL save_kernels = NO;
+static NSMutableArray<NSString *> *kernel_keys = nil;
+static NSMutableDictionary<NSString *, id> *saved_kernels = nil;
+static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
 
 @implementation tinygrad
 
@@ -22,6 +26,14 @@ static CFSocketRef _socket;
     });
 }
 
++ (void)toggleSaveKernels { save_kernels = !save_kernels;}
++ (BOOL)isSaveKernelsEnabled {
+    return save_kernels;
+}
++ (NSArray<NSString *> *)getKernelKeys {
+    return [kernel_keys copy];
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -30,6 +42,9 @@ static CFSocketRef _socket;
         device = MTLCreateSystemDefaultDevice();
         mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
         mtl_buffers_in_flight = [[NSMutableArray alloc] init];
+        kernel_keys = [NSMutableArray array];
+        saved_kernels = [[NSMutableDictionary alloc] init];
+        kernel_dims = [[NSMutableDictionary alloc] init];
 
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
@@ -181,6 +196,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
             if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
             NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
+            if(save_kernels){
+                [kernel_keys addObject: values[@"name"][0]];
+                [saved_kernels setObject:prg forKey:values[@"name"][0]];
+            }
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithSource:prg
                                                           options:nil
