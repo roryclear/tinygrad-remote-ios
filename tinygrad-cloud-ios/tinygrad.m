@@ -43,7 +43,7 @@ static CFSocketRef _socket;
     return self;
 }
 
-- (NSString *)getIP {
++ (NSString *)getIP {
     struct ifaddrs *a = 0;
     getifaddrs(&a);
     NSString *ip = nil;
