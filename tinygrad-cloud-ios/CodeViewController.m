@@ -25,38 +25,28 @@
         toolbar.items = @[flexSpace, doneButton];
         [self.textView setInputAccessoryView:toolbar];
 
-        // Buttons
-        UIButton *runButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [runButton setTitle:@"Run" forState:UIControlStateNormal];
-        runButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
-        runButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-        UIButton *saveButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [saveButton setTitle:@"Save" forState:UIControlStateNormal];
-        saveButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
-        saveButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-        UIStackView *buttonStack = [[UIStackView alloc] initWithArrangedSubviews:@[runButton, saveButton]];
-        buttonStack.axis = UILayoutConstraintAxisHorizontal;
-        buttonStack.distribution = UIStackViewDistributionFillEqually;
-        buttonStack.spacing = 20;
-        buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
+        // Copy button
+        UIButton *copyButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [copyButton setTitle:@"Copy" forState:UIControlStateNormal];
+        copyButton.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+        [copyButton addTarget:self action:@selector(copyToClipboard) forControlEvents:UIControlEventTouchUpInside];
+        copyButton.translatesAutoresizingMaskIntoConstraints = NO;
 
         // Add views
         [self.view addSubview:self.textView];
-        [self.view addSubview:buttonStack];
+        [self.view addSubview:copyButton];
 
         // Constraints
         [NSLayoutConstraint activateConstraints:@[
             [self.textView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
             [self.textView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:10],
             [self.textView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-10],
-            [self.textView.bottomAnchor constraintEqualToAnchor:buttonStack.topAnchor constant:-10],
+            [self.textView.bottomAnchor constraintEqualToAnchor:copyButton.topAnchor constant:-10],
 
-            [buttonStack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-            [buttonStack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-            [buttonStack.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
-            [buttonStack.heightAnchor constraintEqualToConstant:44],
+            [copyButton.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+            [copyButton.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+            [copyButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
+            [copyButton.heightAnchor constraintEqualToConstant:44],
         ]];
 
         // Keyboard notifications
@@ -75,6 +65,10 @@
 
 - (void)dismissKeyboard {
     [self.textView resignFirstResponder];
+}
+
+- (void)copyToClipboard {
+    [UIPasteboard generalPasteboard].string = self.textView.text;
 }
 
 - (void)keyboardWillShow:(NSNotification *)notification {
