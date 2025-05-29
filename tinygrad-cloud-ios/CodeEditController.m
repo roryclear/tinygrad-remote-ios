@@ -2,6 +2,7 @@
 #import <Metal/Metal.h>
 
 static id<MTLDevice> device;
+static id<MTLCommandQueue> mtl_queue;
 @interface CodeEditController () <UITextFieldDelegate>
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
@@ -26,6 +27,7 @@ static id<MTLDevice> device;
     self = [super init];
     if (self) {
         device = MTLCreateSystemDefaultDevice();
+        mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
         _originalTitle = [title copy];
         self.title = title;
         self.view.backgroundColor = [UIColor systemBackgroundColor];
@@ -499,10 +501,8 @@ static id<MTLDevice> device;
     NSError *error = nil;
     id<MTLLibrary> library = [device newLibraryWithSource:self.textView.text options:nil error:&error];
     if (!library) {
-        // This block means the shader compilation itself failed.
         self.resultLabel.textColor = [UIColor systemRedColor];
-        self.resultLabel.text = [NSString stringWithFormat:@"Kernel compilation error: %@", error.localizedDescription];
-        NSLog(@"!!! Metal Library Compilation Error Details: %@", error); // <-- CHECK THIS IN CONSOLE!
+        self.resultLabel.text = [NSString stringWithFormat:@"Error: %@", error.localizedDescription];
         return;
     }
     MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
@@ -510,10 +510,21 @@ static id<MTLDevice> device;
     descriptor.supportIndirectCommandBuffers = YES;
     MTLComputePipelineReflection *reflection = nil;
     id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
-    NSLog(@"--------------------------");
-    NSLog(@"Global Sizes: %@", globalSizes);
-    NSLog(@"Local Sizes: %@", localSizes);
-    NSLog(@"Input Buffer Byte Sizes: %@", inputByteSizes);
+    
+    id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+    [encoder setComputePipelineState: pipeline_state];
+    for(int i = 0; i < inputByteSizes.count; i++){
+        [encoder setBuffer:[device newBufferWithLength:[inputByteSizes[i] intValue] options:MTLResourceStorageModeShared] offset:0 atIndex:i];
+    } // values later
+    MTLSize global_size = MTLSizeMake([globalSizes[0] intValue], [globalSizes[1] intValue], [globalSizes[2] intValue]);
+    MTLSize local_size =  MTLSizeMake([localSizes[0] intValue], [localSizes[1] intValue], [localSizes[2] intValue]);
+    [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
+    [encoder endEncoding];
+    [command_buffer commit];
+    [command_buffer waitUntilCompleted];
+    
+    NSLog(@"ran!");
 }
 
 #pragma mark - Keyboard Handling
