@@ -48,18 +48,18 @@
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Custom Kernel"
                                                                    message:@"Enter a name for your new kernel:"
                                                             preferredStyle:UIAlertControllerStyleAlert];
-
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
         textField.placeholder = @"Kernel Name";
         textField.text = [NSString stringWithFormat:@"Custom Kernel %lu", (unsigned long)self.myKernels.count + 1];
     }];
-
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
     UIAlertAction *createAction = [UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         UITextField *nameTextField = alert.textFields.firstObject;
         NSString *kernelName = nameTextField.text;
         if (kernelName.length > 0 && ![self.myKernels.allKeys containsObject:kernelName]) {
-            NSString *defaultCode = @"#include <metal_stdlib>\nusing namespace metal;\nkernel void my_kernel(device float* data0, uint3 gid [[threadgroup_position_in_grid]], uint3 lid [[thread_position_in_threadgroup]]) {\n\n}";
+            // Replace non-alphanumeric characters with underscores
+            NSString *safeKernelName = [[kernelName componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
+            NSString *defaultCode = [NSString stringWithFormat:@"#include <metal_stdlib>\nusing namespace metal;\nkernel void %@(device float* data0, uint3 gid [[threadgroup_position_in_grid]], uint3 lid [[thread_position_in_threadgroup]]) {\n\n}", safeKernelName];
             self.myKernels[kernelName] = defaultCode;
             [self.myKernelNames addObject:kernelName]; // Add to ordered list
             [self saveMyKernels]; // Save after adding
@@ -73,7 +73,6 @@
             [self presentViewController:errorAlert animated:YES completion:nil];
         }
     }];
-
     [alert addAction:cancelAction];
     [alert addAction:createAction];
     [self presentViewController:alert animated:YES completion:nil];

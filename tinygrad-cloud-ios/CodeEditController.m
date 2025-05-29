@@ -3,6 +3,7 @@
 
 static id<MTLDevice> device;
 static id<MTLCommandQueue> mtl_queue;
+
 @interface CodeEditController () <UITextFieldDelegate>
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
@@ -18,6 +19,9 @@ static id<MTLCommandQueue> mtl_queue;
 // NEW: Properties for dynamic inputs
 @property (nonatomic, strong) UIStackView *inputsStackView; // Vertical stack view for all input rows
 @property (nonatomic, strong) NSMutableArray<UITextField *> *inputTextFields; // Array to keep track of input text fields
+
+// Declare runTapped method in the interface so it's visible within the @implementation
+- (void)runTapped;
 
 @end
 
@@ -473,58 +477,108 @@ static id<MTLCommandQueue> mtl_queue;
 - (void)runTapped {
     [self.view endEditing:YES]; // Dismiss keyboard
 
-    // This button does nothing for now, as per the request.
+    // Get the kernel code from the text view
+    NSString *kernelCode = self.textView.text;
 
-    // Example of how you would collect the data if it were to run:
-    NSMutableArray<NSNumber *> *globalSizes = [NSMutableArray array];
-    for (UITextField *tf in self.globalSizeTextFields) {
-        [globalSizes addObject:@(tf.text.integerValue)];
-    }
-
-    NSMutableArray<NSNumber *> *localSizes = [NSMutableArray array];
-    for (UITextField *tf in self.localSizeTextFields) {
-        [localSizes addObject:@(tf.text.integerValue)];
-    }
-    
-    // NEW: Collect input sizes
-    NSMutableArray<NSNumber *> *inputByteSizes = [NSMutableArray array];
-    for (UITextField *inputTF in self.inputTextFields) {
-        [inputByteSizes addObject:@(inputTF.text.integerValue)];
-    }
-
-
-    self.resultLabel.textColor = [UIColor systemOrangeColor];
-    self.resultLabel.text = @"Run button functionality is currently disabled.";
-    
-    NSLog(@"--- Kernel Code to Run ---");
-    NSLog(@"%@", self.textView.text);
+    // Compile the Metal library
     NSError *error = nil;
-    id<MTLLibrary> library = [device newLibraryWithSource:self.textView.text options:nil error:&error];
+    id<MTLLibrary> library = [device newLibraryWithSource:kernelCode options:nil error:&error];
     if (!library) {
         self.resultLabel.textColor = [UIColor systemRedColor];
-        self.resultLabel.text = [NSString stringWithFormat:@"Error: %@", error.localizedDescription];
+        self.resultLabel.text = [NSString stringWithFormat:@"Compile Error: %@", error.localizedDescription];
         return;
     }
-    MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-    descriptor.computeFunction = [library newFunctionWithName:@"myfunc"];
-    descriptor.supportIndirectCommandBuffers = YES;
-    MTLComputePipelineReflection *reflection = nil;
-    id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
+
+    // Derive the Metal function name from originalTitle by replacing non-alphanumeric chars with underscores
+    NSString *safeKernelName = [[self.originalTitle componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
+
+    // Get the kernel function
+    id<MTLFunction> kernelFunction = [library newFunctionWithName:safeKernelName];
+    if (!kernelFunction) {
+        self.resultLabel.textColor = [UIColor systemRedColor];
+        self.resultLabel.text = [NSString stringWithFormat:@"Kernel function '%@' not found in compiled code.", safeKernelName];
+        return;
+    }
+
+    // Create the compute pipeline state
+    id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:kernelFunction error:&error];
+    if (!pipelineState) {
+        self.resultLabel.textColor = [UIColor systemRedColor];
+        self.resultLabel.text = [NSString stringWithFormat:@"Pipeline State Creation Error: %@", error.localizedDescription];
+        return;
+    }
+
+    // Get global and local sizes from text fields
+    MTLSize globalSize = MTLSizeMake([self.globalSizeTextFields[0].text integerValue],
+                                     [self.globalSizeTextFields[1].text integerValue],
+                                     [self.globalSizeTextFields[2].text integerValue]);
     
-    id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
-    id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-    [encoder setComputePipelineState: pipeline_state];
-    for(int i = 0; i < inputByteSizes.count; i++){
-        [encoder setBuffer:[device newBufferWithLength:[inputByteSizes[i] intValue] options:MTLResourceStorageModeShared] offset:0 atIndex:i];
-    } // values later
-    MTLSize global_size = MTLSizeMake([globalSizes[0] intValue], [globalSizes[1] intValue], [globalSizes[2] intValue]);
-    MTLSize local_size =  MTLSizeMake([localSizes[0] intValue], [localSizes[1] intValue], [localSizes[2] intValue]);
-    [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
-    [encoder endEncoding];
-    [command_buffer commit];
-    [command_buffer waitUntilCompleted];
+    MTLSize localSize = MTLSizeMake([self.localSizeTextFields[0].text integerValue],
+                                    [self.localSizeTextFields[1].text integerValue],
+                                    [self.localSizeTextFields[2].text integerValue]);
+
+    // Validate sizes (optional but good practice)
+    if (globalSize.width == 0 || globalSize.height == 0 || globalSize.depth == 0 ||
+        localSize.width == 0 || localSize.height == 0 || localSize.depth == 0) {
+        self.resultLabel.textColor = [UIColor systemOrangeColor];
+        self.resultLabel.text = @"Global or Local size cannot be zero. Please enter valid numbers.";
+        return;
+    }
+
+    // Create command buffer and encoder
+    id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
+    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+    [computeEncoder setComputePipelineState:pipelineState];
+
+    // Create and set buffers for kernel inputs
+    NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray array];
+    for (int i = 0; i < self.inputTextFields.count; i++) {
+        UITextField *inputTF = self.inputTextFields[i];
+        NSInteger byteSize = [inputTF.text integerValue];
+
+        if (byteSize <= 0) {
+            self.resultLabel.textColor = [UIColor systemOrangeColor];
+            self.resultLabel.text = [NSString stringWithFormat:@"Input %d byte size must be greater than 0.", i + 1];
+            // Clean up any buffers already created
+            for (id<MTLBuffer> buf in buffers) {
+                // In a real app, you might want to reset buffer content or handle it differently.
+                // For simplicity here, we're just letting them deallocate.
+            }
+            return;
+        }
+
+        id<MTLBuffer> buffer = [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
+        // Initialize buffer with some data if needed, e.g., zeros
+        memset(buffer.contents, 0, byteSize);
+        // You might want to initialize the first float to a known value for testing
+        if (byteSize >= sizeof(float)) {
+             ((float*)buffer.contents)[0] = 1.0f; // Example: Set first float to 1.0
+        }
+        
+        [computeEncoder setBuffer:buffer offset:0 atIndex:i];
+        [buffers addObject:buffer];
+    }
     
-    NSLog(@"ran!");
+    // Dispatch threadgroups
+    [computeEncoder dispatchThreadgroups:globalSize threadsPerThreadgroup:localSize];
+    [computeEncoder endEncoding];
+    [commandBuffer commit];
+
+    // Wait for completion and get result (from the first buffer, if available)
+    [commandBuffer waitUntilCompleted];
+
+    if (buffers.count > 0 && [buffers[0] length] >= sizeof(float)) {
+        float *resultPtr = (float *)[buffers[0] contents];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.resultLabel.textColor = [UIColor systemBlueColor]; // Indicate successful execution
+            self.resultLabel.text = [NSString stringWithFormat:@"Kernel Ran! First float in Buffer 0: %.4f", resultPtr[0]];
+        });
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.resultLabel.textColor = [UIColor systemBlueColor];
+            self.resultLabel.text = @"Kernel Ran! No valid output from Buffer 0 (or buffer is too small).";
+        });
+    }
 }
 
 #pragma mark - Keyboard Handling
