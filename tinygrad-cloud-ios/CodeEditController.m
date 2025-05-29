@@ -1,5 +1,9 @@
 #import "CodeEditController.h"
 
+// No longer static keys, they will be generated dynamically
+// static NSString *const kGlobalSizeXKey = @"globalSizeX";
+// ...
+
 @interface CodeEditController () <UITextFieldDelegate>
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
@@ -8,6 +12,9 @@
 
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
+
+// Property to hold the dynamic height constraint for the textView
+@property (nonatomic, strong) NSLayoutConstraint *textViewDynamicHeightConstraint;
 
 @end
 
@@ -20,7 +27,10 @@
         self.title = title;
         self.view.backgroundColor = [UIColor systemBackgroundColor];
 
-        // Add a UIScrollView to handle keyboard appearance
+        // Declare padding here, at the beginning of the method
+        CGFloat padding = 10.0;
+
+        // Add a UIScrollView to handle keyboard appearance and long content
         self.scrollView = [[UIScrollView alloc] init];
         self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.view addSubview:self.scrollView];
@@ -31,14 +41,15 @@
 
         // Text view
         self.textView = [[UITextView alloc] init];
-        self.textView.text = code;
+        self.textView.text = code; // Set the initial code here
         self.textView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
         self.textView.autocorrectionType = UITextAutocorrectionTypeNo;
         self.textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
         self.textView.layer.borderColor = [UIColor systemGray5Color].CGColor;
         self.textView.layer.borderWidth = 1.0;
         self.textView.layer.cornerRadius = 5.0;
-        self.textView.alwaysBounceVertical = YES;
+        self.textView.alwaysBounceVertical = YES; // This enables its own internal scrolling if content is too long for its frame
+        self.textView.scrollEnabled = NO; // IMPORTANT: Disable internal scrolling to allow parent UIScrollView to handle it
         self.textView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:self.textView];
 
@@ -126,14 +137,26 @@
             [self.contentView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor] // Important for vertical scrolling
         ]];
 
+        // Initialize the dynamic height constraint
+        // Set its initial constant based on the actual content size of the textView
+        // This attempts to give it the correct height from the start.
+        // We'll calculate a preliminary width for sizeThatFits, as the actual frame might not be set yet.
+        // Use `self.view.bounds.size.width` for the main view's width.
+        CGFloat initialTextViewWidth = CGRectGetWidth(self.view.bounds) - (2 * padding);
+        if (initialTextViewWidth <= 0) initialTextViewWidth = 300; // Fallback if view bounds not yet available
+        
+        CGSize initialSize = [self.textView sizeThatFits:CGSizeMake(initialTextViewWidth, CGFLOAT_MAX)];
+        self.textViewDynamicHeightConstraint = [self.textView.heightAnchor constraintEqualToConstant:MAX(initialSize.height, 250.0)];
+        [self.textViewDynamicHeightConstraint setActive:YES];
+
         // Constraints for elements within contentView
-        CGFloat padding = 10.0;
+        // Removed `CGFloat padding = 10.0;` duplicate declaration here.
         [NSLayoutConstraint activateConstraints:@[
             [self.textView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
             [self.textView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [self.textView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
-            [self.textView.heightAnchor constraintGreaterThanOrEqualToConstant:100], // Minimum height
-            [self.textView.heightAnchor constraintLessThanOrEqualToAnchor:self.view.heightAnchor multiplier:0.4], // Max 40% of view
+            // Set a higher minimum height for the text view, which will act as a lower bound for dynamic height
+            [self.textView.heightAnchor constraintGreaterThanOrEqualToConstant:250],
 
             // Global Size
             [globalLabel.topAnchor constraintEqualToAnchor:self.textView.bottomAnchor constant:padding],
@@ -193,12 +216,45 @@
                                                  selector:@selector(keyboardWillHide:)
                                                      name:UIKeyboardWillHideNotification
                                                    object:nil];
+        // Register for text view content size changes to update its height
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(textViewDidChangeNotification:)
+                                                     name:UITextViewTextDidChangeNotification
+                                                   object:self.textView];
     }
     return self;
 }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    
+    // Ensure the text view's width is correctly set before calculating height
+    // This is crucial for sizeThatFits: to work correctly.
+    CGFloat fixedWidth = self.textView.frame.size.width;
+    if (fixedWidth > 0 && self.textView.scrollEnabled == NO) {
+        CGSize newSize = [self.textView sizeThatFits:CGSizeMake(fixedWidth, CGFLOAT_MAX)];
+        
+        // Update the constant of the dynamic height constraint, respecting the minimum height
+        CGFloat targetHeight = MAX(newSize.height, 250.0); // Ensure it's at least the minimum
+        
+        if (self.textViewDynamicHeightConstraint.constant != targetHeight) {
+            self.textViewDynamicHeightConstraint.constant = targetHeight;
+            // Animate the layout change for a smoother transition
+            [UIView animateWithDuration:0.1 animations:^{
+                [self.view layoutIfNeeded];
+            }];
+        }
+    }
+}
+
+- (void)textViewDidChangeNotification:(NSNotification *)notification {
+    // This method is called whenever the text in textView changes.
+    // Trigger layout update to recalculate textView's height.
+    [self.view setNeedsLayout];
 }
 
 - (void)saveTapped {
@@ -273,31 +329,35 @@
     self.scrollView.contentInset = contentInsets;
     self.scrollView.scrollIndicatorInsets = contentInsets;
 
-    // Find the currently active text field
-    UITextField *activeTextField = nil;
-    for (UITextField *textField in self.globalSizeTextFields) {
-        if ([textField isFirstResponder]) {
-            activeTextField = textField;
-            break;
-        }
-    }
-    if (!activeTextField) {
-        for (UITextField *textField in self.localSizeTextFields) {
+    // Find the currently active text field or text view
+    UIView *activeInput = nil;
+    if ([self.textView isFirstResponder]) {
+        activeInput = self.textView;
+    } else {
+        for (UITextField *textField in self.globalSizeTextFields) {
             if ([textField isFirstResponder]) {
-                activeTextField = textField;
+                activeInput = textField;
                 break;
+            }
+        }
+        if (!activeInput) {
+            for (UITextField *textField in self.localSizeTextFields) {
+                if ([textField isFirstResponder]) {
+                    activeInput = textField;
+                    break;
+                }
             }
         }
     }
 
-    if (activeTextField) {
-        // Calculate the rect of the active text field in the scroll view's coordinate system
-        CGRect rect = [self.scrollView convertRect:activeTextField.bounds fromView:activeTextField];
+    if (activeInput) {
+        // Calculate the rect of the active input in the scroll view's coordinate system
+        CGRect rect = [self.scrollView convertRect:activeInput.bounds fromView:activeInput];
         // Adjust for any insets from the navigation bar/safe area if needed
         rect.origin.y -= self.scrollView.contentOffset.y; // Account for current scroll offset
-        rect.size.height += 10; // Add some padding below the text field
+        rect.size.height += 10; // Add some padding below the input field
 
-        // Check if the text field is obscured by the keyboard
+        // Check if the input is obscured by the keyboard
         CGRect visibleRect = self.scrollView.bounds;
         visibleRect.size.height -= keyboardFrame.size.height; // Area visible above keyboard
 
@@ -306,7 +366,7 @@
         }
     }
 
-    // Add a "Done" button to the number pad
+    // Add a "Done" button to the number pad for text fields
     UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 44)];
     UIBarButtonItem *flexSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
     UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(doneButtonTapped)];
@@ -318,6 +378,7 @@
     for (UITextField *textField in self.localSizeTextFields) {
         textField.inputAccessoryView = toolbar;
     }
+    // No input accessory view for UITextView, as it typically has its own keyboard actions
 }
 
 - (void)keyboardWillHide:(NSNotification *)notification {
