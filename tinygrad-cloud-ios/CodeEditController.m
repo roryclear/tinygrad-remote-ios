@@ -464,14 +464,6 @@ static id<MTLCommandQueue> mtl_queue;
     [defaults setObject:currentInputSizes forKey:inputSizesKey];
 
     [defaults synchronize]; // Ensure immediate saving
-
-    // Provide visual feedback that saving occurred
-    self.resultLabel.textColor = [UIColor systemGreenColor];
-    self.resultLabel.text = @"Kernel code and sizes saved successfully!";
-    // You might want to clear the result label after a short delay
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        self.resultLabel.text = @"";
-    });
 }
 
 - (void)runTapped {
