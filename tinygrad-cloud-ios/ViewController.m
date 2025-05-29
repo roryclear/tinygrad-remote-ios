@@ -1,16 +1,7 @@
 #import "ViewController.h"
 #import "tinygrad.h"
 #import "CodeViewController.h"
-
-@interface ViewController () <UITableViewDataSource>
-@property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) UISwitch *remoteSwitch;
-@property (nonatomic, strong) UISwitch *kernelsSwitch;
-@property (nonatomic, strong) UILabel *ipLabel;
-@property (nonatomic, strong) NSTimer *ipTimer;
-@property (nonatomic, assign) BOOL isRemoteEnabled;
-@property (nonatomic, strong) NSDictionary<NSString *, NSNumber *> *kernelTimes;
-@end
+#import "CodeEditController.h"
 
 @implementation ViewController
 
@@ -19,11 +10,16 @@
     [UIApplication sharedApplication].idleTimerDisabled = YES;
 
     self.isRemoteEnabled = NO;
+    self.myKernels = [NSMutableDictionary dictionary];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
+
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                                                          target:self
+                                                                                          action:@selector(addCustomKernel)];
 
     self.remoteSwitch = [[UISwitch alloc] init];
     [self.remoteSwitch addTarget:self action:@selector(remoteToggleChanged:) forControlEvents:UIControlEventValueChanged];
@@ -35,7 +31,7 @@
     self.ipLabel.text = @"Turn on tinygrad remote";
     self.ipLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
     
-    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *_) {
+    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
         if ([tinygrad isSaveKernelsEnabled]) {
             self.kernelTimes = [tinygrad getKernelTimes];
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -45,12 +41,31 @@
     }];
 }
 
+- (void)addCustomKernel {
+    NSString *defaultName = [NSString stringWithFormat:@"Custom Kernel %lu", (unsigned long)self.myKernels.count + 1];
+    NSString *defaultCode = @"// Enter your kernel code here\n// This is your custom kernel";
+    self.myKernels[defaultName] = defaultCode;
+    [self showKernelEditor:defaultName];
+}
+
+- (void)showKernelEditor:(NSString *)kernelName {
+    CodeEditController *vc = [[CodeEditController alloc] initWithCode:self.myKernels[kernelName] title:kernelName];
+    
+    __weak typeof(self) weakSelf = self;
+    vc.onSave = ^(NSString *code) {
+        weakSelf.myKernels[kernelName] = code;
+        [weakSelf.tableView reloadData];
+    };
+    
+    [self.navigationController pushViewController:vc animated:YES];
+}
+
 - (void)remoteToggleChanged:(UISwitch *)sender {
     if (sender.isOn) {
         [tinygrad start];
         self.isRemoteEnabled = YES;
         [self updateIPLabel];
-        self.ipTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *_) {
+        self.ipTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
             [self updateIPLabel];
         }];
     } else {
@@ -63,6 +78,7 @@
 
 - (void)kernelsToggleChanged:(UISwitch *)sender {
     [tinygrad toggleSaveKernels];
+    [self.tableView reloadData];
 }
 
 - (void)updateIPLabel {
@@ -74,19 +90,19 @@
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return [tinygrad isSaveKernelsEnabled] ? 2 : 1;
+    return 3;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 2; // switches
-    if (section == 1) return [tinygrad getKernelKeys].count; // kernel keys
+    if (section == 0) return 2;
+    if (section == 1) return self.myKernels.count;
+    if (section == 2 && [tinygrad isSaveKernelsEnabled]) return [tinygrad getKernelKeys].count;
     return 0;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 1 && [tinygrad isSaveKernelsEnabled]) {
-        return @"Tinygrad Kernels";
-    }
+    if (section == 1) return @"MY KERNELS";
+    if (section == 2 && [tinygrad isSaveKernelsEnabled]) return @"Tinygrad Kernels";
     return nil;
 }
 
@@ -99,9 +115,9 @@
 
     [cell.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     cell.textLabel.text = @"";
+    cell.accessoryType = UITableViewCellAccessoryNone;
 
     if (indexPath.section == 0) {
-        // Remote and Kernel Switches
         if (indexPath.row == 0) {
             [cell.contentView addSubview:self.ipLabel];
             self.ipLabel.frame = CGRectMake(15, 0, cell.contentView.bounds.size.width - 100, 44);
@@ -114,13 +130,21 @@
             toggle.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
             [cell.contentView addSubview:toggle];
         }
-    } else if (indexPath.section == 1) {
+    }
+    else if (indexPath.section == 1) {
+        NSArray *myKernelNames = [self.myKernels allKeys];
+        if (indexPath.row < myKernelNames.count) {
+            NSString *kernelName = myKernelNames[indexPath.row];
+            cell.textLabel.text = kernelName;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+    }
+    else if (indexPath.section == 2) {
         NSArray<NSString *> *keys = [tinygrad getKernelKeys];
         if (indexPath.row < keys.count) {
             NSString *kernelName = keys[indexPath.row];
             NSNumber *time = self.kernelTimes[kernelName];
 
-            // Time label (right)
             UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
             double ns = time.doubleValue;
             timeLabel.text = ns >= 1e6 ? [NSString stringWithFormat:@"%.3f ms", ns / 1e6]
@@ -131,7 +155,6 @@
             timeLabel.translatesAutoresizingMaskIntoConstraints = NO;
             [cell.contentView addSubview:timeLabel];
 
-            // Kernel name label (left)
             UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
             nameLabel.text = kernelName;
             nameLabel.font = [UIFont systemFontOfSize:16];
@@ -139,7 +162,6 @@
             nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
             [cell.contentView addSubview:nameLabel];
 
-            // Clear default textLabel
             cell.textLabel.text = @"";
 
             [NSLayoutConstraint activateConstraints:@[
@@ -157,16 +179,40 @@
     return cell;
 }
 
+#pragma mark - UITableViewDelegate
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 1) {
+        NSArray *myKernelNames = [self.myKernels allKeys];
+        if (indexPath.row < myKernelNames.count) {
+            [self showKernelEditor:myKernelNames[indexPath.row]];
+        }
+    }
+    else if (indexPath.section == 2) {
         NSArray<NSString *> *keys = [tinygrad getKernelKeys];
         if (indexPath.row < keys.count) {
             NSString *key = keys[indexPath.row];
             NSString *code = [tinygrad getKernelCodeForKey:key];
-            [self showKernelCode:code title:key];
+            CodeViewController *vc = [[CodeViewController alloc] initWithCode:code title:key];
+            [self.navigationController pushViewController:vc animated:YES];
         }
     }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    return indexPath.section == 1;
+}
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 1) {
+        NSArray *myKernelNames = [self.myKernels allKeys];
+        if (indexPath.row < myKernelNames.count) {
+            NSString *kernelName = myKernelNames[indexPath.row];
+            [self.myKernels removeObjectForKey:kernelName];
+            [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
+        }
+    }
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
@@ -177,10 +223,4 @@
     return NO;
 }
 
-- (void)showKernelCode:(NSString *)code title:(NSString *)title {
-    CodeViewController *vc = [[CodeViewController alloc] initWithCode:code title:title];
-    [self.navigationController pushViewController:vc animated:YES];
-}
-
 @end
-
