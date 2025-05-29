@@ -59,7 +59,7 @@
         UITextField *nameTextField = alert.textFields.firstObject;
         NSString *kernelName = nameTextField.text;
         if (kernelName.length > 0 && ![self.myKernels.allKeys containsObject:kernelName]) {
-            NSString *defaultCode = @"// Enter your kernel code here\n// This is your custom kernel";
+            NSString *defaultCode = @"#include <metal_stdlib>\nusing namespace metal;\nkernel void my_kernel(device float* data0, uint3 gid [[threadgroup_position_in_grid]], uint3 lid [[thread_position_in_threadgroup]]) {\n\n}";
             self.myKernels[kernelName] = defaultCode;
             [self.myKernelNames addObject:kernelName]; // Add to ordered list
             [self saveMyKernels]; // Save after adding
