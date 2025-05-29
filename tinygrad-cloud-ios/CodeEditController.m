@@ -269,11 +269,14 @@ static id<MTLCommandQueue> mtl_queue;
                                                  selector:@selector(keyboardWillHide:)
                                                      name:UIKeyboardWillHideNotification
                                                    object:nil];
-        // Register for text view content size changes to update its height
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(textViewDidChangeNotification:)
                                                      name:UITextViewTextDidChangeNotification
                                                    object:self.textView];
+
+        // NEW: Force layout and update text view height for initial content
+        [self.view layoutIfNeeded]; // Ensure textView has a valid frame
+        [self updateTextViewHeight]; // Update height based on initial content
     }
     return self;
 }
@@ -403,29 +406,35 @@ static id<MTLCommandQueue> mtl_queue;
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     
-    // Ensure the text view's width is correctly set before calculating height
-    // This is crucial for sizeThatFits: to work correctly.
-    CGFloat fixedWidth = self.textView.frame.size.width;
-    if (fixedWidth > 0 && self.textView.scrollEnabled == NO) {
-        CGSize newSize = [self.textView sizeThatFits:CGSizeMake(fixedWidth, CGFLOAT_MAX)];
-        
-        // Update the constant of the dynamic height constraint, respecting the minimum height
-        CGFloat targetHeight = MAX(newSize.height, 250.0); // Ensure it's at least the minimum
-        
-        if (self.textViewDynamicHeightConstraint.constant != targetHeight) {
-            self.textViewDynamicHeightConstraint.constant = targetHeight;
-            // Animate the layout change for a smoother transition
-            [UIView animateWithDuration:0.1 animations:^{
-                [self.view layoutIfNeeded];
-            }];
-        }
-    }
+    // Update text view height to ensure it fits content during layout changes
+    [self updateTextViewHeight];
 }
 
 - (void)textViewDidChangeNotification:(NSNotification *)notification {
-    // This method is called whenever the text in textView changes.
-    // Trigger layout update to recalculate textView's height.
-    [self.view setNeedsLayout];
+    // Update text view height when content changes
+    [self updateTextViewHeight];
+}
+
+- (void)updateTextViewHeight {
+    // Ensure the text view has a valid width
+    CGFloat fixedWidth = self.textView.frame.size.width;
+    if (fixedWidth <= 0) {
+        fixedWidth = CGRectGetWidth(self.view.bounds) - 20.0; // Fallback: 10.0 padding on each side
+        if (fixedWidth <= 0) fixedWidth = 300; // Absolute fallback
+    }
+
+    // Calculate the content size
+    CGSize newSize = [self.textView sizeThatFits:CGSizeMake(fixedWidth, CGFLOAT_MAX)];
+    CGFloat targetHeight = MAX(newSize.height, 250.0); // Respect minimum height of 250
+
+    // Update the dynamic height constraint if needed
+    if (fabs(self.textViewDynamicHeightConstraint.constant - targetHeight) > 0.1) {
+        self.textViewDynamicHeightConstraint.constant = targetHeight;
+        // Animate the layout change for smoothness
+        [UIView animateWithDuration:0.1 animations:^{
+            [self.view layoutIfNeeded];
+        }];
+    }
 }
 
 #pragma mark - Actions
