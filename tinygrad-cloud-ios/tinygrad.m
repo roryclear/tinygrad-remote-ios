@@ -15,6 +15,7 @@ static BOOL save_kernels = NO;
 static NSMutableArray<NSString *> *kernel_keys = nil;
 static NSMutableDictionary<NSString *, id> *saved_kernels = nil;
 static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
+static NSMutableDictionary<NSString *, id> *kernel_times = nil;
 
 @implementation tinygrad
 
@@ -33,6 +34,9 @@ static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
 + (NSArray<NSString *> *)getKernelKeys {
     return [kernel_keys copy];
 }
++ (NSDictionary<NSString *, NSNumber *> *)getKernelTimes {
+    return [kernel_times copy];
+}
 + (NSString *)getKernelCodeForKey:(NSString *)key {
     return saved_kernels[key];
 }
@@ -48,6 +52,7 @@ static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
         kernel_keys = [NSMutableArray array];
         saved_kernels = [[NSMutableDictionary alloc] init];
         kernel_dims = [[NSMutableDictionary alloc] init];
+        kernel_times = [[NSMutableDictionary alloc] init];
 
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
@@ -73,7 +78,7 @@ static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
         }
         a = a->ifa_next;
     }
-    return ip ? [NSString stringWithFormat:@"device ip: %@:6667", ip] : @"Waiting for WiFi...";
+    return ip ? [NSString stringWithFormat:@"tinygrad: %@:6667", ip] : @"Waiting for WiFi...";
 }
 
 static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
@@ -233,7 +238,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
             for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
                 id<MTLBuffer> buffer = buffers[values[@"bufs"][i]];
-                if (buffer) { // Add nil check
+                if (buffer) {
                     [encoder setBuffer:buffer offset:0 atIndex:i];
                 }
             }
@@ -246,11 +251,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
-            if([values[@"wait"][0] isEqualToString:@"True"]) {
+            if([values[@"wait"][0] isEqualToString:@"True"] || save_kernels) {
                 [command_buffer waitUntilCompleted];
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
-                const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
-                sendHTTPResponse(handle, time_string, strlen(time_string));
+                [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:values[@"name"][0]]; //ns
+                if([values[@"wait"][0] isEqualToString:@"True"]){
+                    const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    sendHTTPResponse(handle, time_string, strlen(time_string));
+                }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
         }
