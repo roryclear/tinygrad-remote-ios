@@ -53,7 +53,7 @@ static NSMutableDictionary<NSString *, id> *kernel_times = nil;
         saved_kernels = [[NSMutableDictionary alloc] init];
         kernel_dims = [[NSMutableDictionary alloc] init];
         kernel_times = [[NSMutableDictionary alloc] init];
-
+        
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
         struct sockaddr_in address; memset(&address, 0, sizeof(address)); address.sin_len = sizeof(address); address.sin_port = htons(6667); address.sin_addr.s_addr = INADDR_ANY;
@@ -209,15 +209,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [saved_kernels setObject:prg forKey:values[@"name"][0]];
             }
             NSError *error = nil;
-            id<MTLLibrary> library = [device newLibraryWithSource:prg
-                                                          options:nil
-                                                            error:&error];
-            if (error || !library) {
-                NSLog(@"Error creating Metal library: %@", error);
-                sendHTTPResponse(handle, "Error: Metal library creation failed", strlen("Error: Metal library creation failed"));
-                close(handle);
-                return;
-            }
+            id<MTLLibrary> library = [device newLibraryWithSource:prg options:nil error:&error];
             MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
             descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];
             descriptor.supportIndirectCommandBuffers = YES;

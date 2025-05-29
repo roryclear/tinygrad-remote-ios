@@ -1,9 +1,7 @@
 #import "CodeEditController.h"
+#import <Metal/Metal.h>
 
-// No longer static keys, they will be generated dynamically
-// static NSString *const kGlobalSizeXKey = @"globalSizeX";
-// ...
-
+static id<MTLDevice> device;
 @interface CodeEditController () <UITextFieldDelegate>
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
@@ -16,6 +14,10 @@
 // Property to hold the dynamic height constraint for the textView
 @property (nonatomic, strong) NSLayoutConstraint *textViewDynamicHeightConstraint;
 
+// NEW: Properties for dynamic inputs
+@property (nonatomic, strong) UIStackView *inputsStackView; // Vertical stack view for all input rows
+@property (nonatomic, strong) NSMutableArray<UITextField *> *inputTextFields; // Array to keep track of input text fields
+
 @end
 
 @implementation CodeEditController
@@ -23,6 +25,7 @@
 - (instancetype)initWithCode:(NSString *)code title:(NSString *)title {
     self = [super init];
     if (self) {
+        device = MTLCreateSystemDefaultDevice();
         _originalTitle = [title copy];
         self.title = title;
         self.view.backgroundColor = [UIColor systemBackgroundColor];
@@ -85,7 +88,7 @@
             NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
             globalTF.text = [defaults stringForKey:globalKey] ?: @"1"; // Load per-kernel value
             
-            globalTF.tag = 100 + i; // Assign unique tags
+            globalTF.tag = 100 + i; // Assign unique tags for keyboard handling
             globalTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:globalTF];
             [self.globalSizeTextFields addObject:globalTF];
@@ -101,10 +104,46 @@
             NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
             localTF.text = [defaults stringForKey:localKey] ?: @"1"; // Load per-kernel value
             
-            localTF.tag = 200 + i; // Assign unique tags
+            localTF.tag = 200 + i; // Assign unique tags for keyboard handling
             localTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:localTF];
             [self.localSizeTextFields addObject:localTF];
+        }
+
+        // NEW: Inputs Section
+        UILabel *inputsLabel = [[UILabel alloc] init];
+        inputsLabel.text = @"Kernel Inputs (Byte Sizes):";
+        inputsLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+        inputsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:inputsLabel];
+
+        self.inputsStackView = [[UIStackView alloc] init];
+        self.inputsStackView.axis = UILayoutConstraintAxisVertical;
+        self.inputsStackView.distribution = UIStackViewDistributionFill;
+        self.inputsStackView.alignment = UIStackViewAlignmentLeading; // Align left
+        self.inputsStackView.spacing = padding / 2; // Half padding between input rows
+        self.inputsStackView.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:self.inputsStackView];
+
+        self.inputTextFields = [NSMutableArray array]; // Initialize the array for tracking text fields
+
+        UIButton *addInputButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [addInputButton setTitle:@"Add Input" forState:UIControlStateNormal];
+        [addInputButton addTarget:self action:@selector(addInputTapped) forControlEvents:UIControlEventTouchUpInside];
+        addInputButton.titleLabel.font = [UIFont systemFontOfSize:16];
+        addInputButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:addInputButton];
+        
+        // Load existing inputs or add a default one
+        NSString *inputSizesKey = [NSString stringWithFormat:@"%@_inputSizes", self.originalTitle];
+        NSArray<NSString *> *savedInputSizes = [defaults arrayForKey:inputSizesKey];
+        if (savedInputSizes.count > 0) {
+            for (NSString *inputSizeText in savedInputSizes) {
+                [self addInputRowWithText:inputSizeText];
+            }
+        } else {
+            // Add one default empty input field if none saved
+            [self addInputRowWithText:@""];
         }
 
         // Run Button
@@ -138,10 +177,6 @@
         ]];
 
         // Initialize the dynamic height constraint
-        // Set its initial constant based on the actual content size of the textView
-        // This attempts to give it the correct height from the start.
-        // We'll calculate a preliminary width for sizeThatFits, as the actual frame might not be set yet.
-        // Use `self.view.bounds.size.width` for the main view's width.
         CGFloat initialTextViewWidth = CGRectGetWidth(self.view.bounds) - (2 * padding);
         if (initialTextViewWidth <= 0) initialTextViewWidth = 300; // Fallback if view bounds not yet available
         
@@ -150,7 +185,6 @@
         [self.textViewDynamicHeightConstraint setActive:YES];
 
         // Constraints for elements within contentView
-        // Removed `CGFloat padding = 10.0;` duplicate declaration here.
         [NSLayoutConstraint activateConstraints:@[
             [self.textView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
             [self.textView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
@@ -190,8 +224,21 @@
             [self.localSizeTextFields[2].leadingAnchor constraintEqualToAnchor:self.localSizeTextFields[1].trailingAnchor constant:padding],
             [self.localSizeTextFields[2].widthAnchor constraintEqualToConstant:70],
 
-            // Run Button
-            [runButton.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding * 2],
+            // NEW: Inputs section constraints
+            [inputsLabel.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding],
+            [inputsLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+
+            [self.inputsStackView.topAnchor constraintEqualToAnchor:inputsLabel.bottomAnchor constant:padding/2],
+            [self.inputsStackView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+            [self.inputsStackView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
+            // Keep stack view height flexible
+            
+            [addInputButton.topAnchor constraintEqualToAnchor:self.inputsStackView.bottomAnchor constant:padding/2],
+            [addInputButton.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+            [addInputButton.heightAnchor constraintEqualToConstant:30], // Smaller button
+
+            // Run Button (now relative to addInputButton)
+            [runButton.topAnchor constraintEqualToAnchor:addInputButton.bottomAnchor constant:padding * 2],
             [runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
             [runButton.heightAnchor constraintEqualToConstant:44],
 
@@ -229,6 +276,124 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
+#pragma mark - Dynamic Input Methods
+
+- (void)addInputRowWithText:(NSString *)initialText {
+    NSInteger inputCount = self.inputTextFields.count;
+
+    UIStackView *rowStackView = [[UIStackView alloc] init];
+    rowStackView.axis = UILayoutConstraintAxisHorizontal;
+    rowStackView.distribution = UIStackViewDistributionFill;
+    rowStackView.alignment = UIStackViewAlignmentCenter;
+    rowStackView.spacing = 8;
+    rowStackView.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *label = [[UILabel alloc] init];
+    label.text = [NSString stringWithFormat:@"Input %ld:", (long)(inputCount + 1)];
+    label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    [rowStackView addArrangedSubview:label];
+
+    UITextField *textField = [[UITextField alloc] init];
+    textField.placeholder = @"Byte Size";
+    textField.text = initialText;
+    textField.keyboardType = UIKeyboardTypeNumberPad;
+    textField.borderStyle = UITextBorderStyleRoundedRect;
+    textField.delegate = self;
+    textField.tag = 300 + inputCount; // Assign unique tags starting from 300
+    [rowStackView addArrangedSubview:textField];
+    [self.inputTextFields addObject:textField]; // Keep track of the text field
+
+    // Constraint for textField width to make it look decent
+    [textField.widthAnchor constraintEqualToConstant:100].active = YES;
+
+    UIButton *removeButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [removeButton setTitle:@"Remove" forState:UIControlStateNormal];
+    [removeButton addTarget:self action:@selector(removeInputTapped:) forControlEvents:UIControlEventTouchUpInside];
+    removeButton.tag = inputCount; // Use the index for removal
+    [rowStackView addArrangedSubview:removeButton];
+    
+    [self.inputsStackView addArrangedSubview:rowStackView];
+
+    // Ensure layout updates after adding
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+}
+
+- (void)addInputTapped {
+    [self addInputRowWithText:@""]; // Add a new empty input field
+}
+
+- (void)removeInputTapped:(UIButton *)sender {
+    if (self.inputTextFields.count <= 1) {
+        // Prevent removing the last input field, show a message or disable button
+        self.resultLabel.textColor = [UIColor systemOrangeColor];
+        self.resultLabel.text = @"Cannot remove the last input field.";
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            self.resultLabel.text = @"";
+        });
+        return;
+    }
+
+    // Get the stack view containing the button (the horizontal row stack view)
+    UIStackView *rowToRemove = (UIStackView *)sender.superview;
+    if (rowToRemove && [self.inputsStackView.arrangedSubviews containsObject:rowToRemove]) {
+        // Remove the associated text field from our tracking array
+        UITextField *textFieldToRemove = nil;
+        for (UIView *subview in rowToRemove.arrangedSubviews) {
+            if ([subview isKindOfClass:[UITextField class]]) {
+                textFieldToRemove = (UITextField *)subview;
+                break;
+            }
+        }
+        if (textFieldToRemove) {
+            [self.inputTextFields removeObject:textFieldToRemove];
+        }
+
+        [self.inputsStackView removeArrangedSubview:rowToRemove];
+        [rowToRemove removeFromSuperview];
+
+        // Re-label inputs and re-tag buttons after removal
+        [self updateInputLabelsAndTags];
+        
+        // Ensure layout updates after removing
+        [self.view setNeedsLayout];
+        [self.view layoutIfNeeded];
+    }
+}
+
+// Helper to update labels and tags after adding/removing rows
+- (void)updateInputLabelsAndTags {
+    for (int i = 0; i < self.inputsStackView.arrangedSubviews.count; i++) {
+        UIStackView *rowStackView = self.inputsStackView.arrangedSubviews[i];
+        UILabel *label = nil;
+        UITextField *textField = nil;
+        UIButton *removeButton = nil;
+
+        for (UIView *subview in rowStackView.arrangedSubviews) {
+            if ([subview isKindOfClass:[UILabel class]]) {
+                label = (UILabel *)subview;
+            } else if ([subview isKindOfClass:[UITextField class]]) {
+                textField = (UITextField *)subview;
+            } else if ([subview isKindOfClass:[UIButton class]]) {
+                removeButton = (UIButton *)subview;
+            }
+        }
+
+        if (label) {
+            label.text = [NSString stringWithFormat:@"Input %ld:", (long)(i + 1)];
+        }
+        if (textField) {
+            textField.tag = 300 + i;
+        }
+        if (removeButton) {
+            removeButton.tag = i;
+        }
+    }
+}
+
+
+#pragma mark - Layout & Lifecycle
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     
@@ -257,6 +422,8 @@
     [self.view setNeedsLayout];
 }
 
+#pragma mark - Actions
+
 - (void)saveTapped {
     [self.view endEditing:YES]; // Dismiss keyboard before saving
 
@@ -276,6 +443,20 @@
         [defaults setObject:self.globalSizeTextFields[i].text forKey:globalKey];
         [defaults setObject:self.localSizeTextFields[i].text forKey:localKey];
     }
+
+    // NEW: Save the input sizes
+    NSMutableArray<NSString *> *currentInputSizes = [NSMutableArray array];
+    for (UITextField *inputTF in self.inputTextFields) {
+        // Only save non-empty inputs, or you might want to save all for consistency
+        if (inputTF.text.length > 0) {
+            [currentInputSizes addObject:inputTF.text];
+        } else {
+            [currentInputSizes addObject:@""]; // Save empty string if field is empty
+        }
+    }
+    NSString *inputSizesKey = [NSString stringWithFormat:@"%@_inputSizes", self.originalTitle];
+    [defaults setObject:currentInputSizes forKey:inputSizesKey];
+
     [defaults synchronize]; // Ensure immediate saving
 
     // Provide visual feedback that saving occurred
@@ -302,19 +483,37 @@
     for (UITextField *tf in self.localSizeTextFields) {
         [localSizes addObject:@(tf.text.integerValue)];
     }
+    
+    // NEW: Collect input sizes
+    NSMutableArray<NSNumber *> *inputByteSizes = [NSMutableArray array];
+    for (UITextField *inputTF in self.inputTextFields) {
+        [inputByteSizes addObject:@(inputTF.text.integerValue)];
+    }
+
 
     self.resultLabel.textColor = [UIColor systemOrangeColor];
     self.resultLabel.text = @"Run button functionality is currently disabled.";
-
-    /*
-    // Example of how to call the delegate if it were active
-    if ([self.delegate respondsToSelector:@selector(codeEditController:didRequestRunCode:globalSizes:localSizes:)]) {
-        [self.delegate codeEditController:self
-                       didRequestRunCode:self.textView.text
-                             globalSizes:globalSizes
-                              localSizes:localSizes];
+    
+    NSLog(@"--- Kernel Code to Run ---");
+    NSLog(@"%@", self.textView.text);
+    NSError *error = nil;
+    id<MTLLibrary> library = [device newLibraryWithSource:self.textView.text options:nil error:&error];
+    if (!library) {
+        // This block means the shader compilation itself failed.
+        self.resultLabel.textColor = [UIColor systemRedColor];
+        self.resultLabel.text = [NSString stringWithFormat:@"Kernel compilation error: %@", error.localizedDescription];
+        NSLog(@"!!! Metal Library Compilation Error Details: %@", error); // <-- CHECK THIS IN CONSOLE!
+        return;
     }
-    */
+    MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
+    descriptor.computeFunction = [library newFunctionWithName:@"myfunc"];
+    descriptor.supportIndirectCommandBuffers = YES;
+    MTLComputePipelineReflection *reflection = nil;
+    id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
+    NSLog(@"--------------------------");
+    NSLog(@"Global Sizes: %@", globalSizes);
+    NSLog(@"Local Sizes: %@", localSizes);
+    NSLog(@"Input Buffer Byte Sizes: %@", inputByteSizes);
 }
 
 #pragma mark - Keyboard Handling
@@ -334,14 +533,25 @@
     if ([self.textView isFirstResponder]) {
         activeInput = self.textView;
     } else {
+        // Check global size text fields
         for (UITextField *textField in self.globalSizeTextFields) {
             if ([textField isFirstResponder]) {
                 activeInput = textField;
                 break;
             }
         }
+        // Check local size text fields
         if (!activeInput) {
             for (UITextField *textField in self.localSizeTextFields) {
+                if ([textField isFirstResponder]) {
+                    activeInput = textField;
+                    break;
+                }
+            }
+        }
+        // NEW: Check dynamic input text fields
+        if (!activeInput) {
+            for (UITextField *textField in self.inputTextFields) {
                 if ([textField isFirstResponder]) {
                     activeInput = textField;
                     break;
@@ -376,6 +586,10 @@
         textField.inputAccessoryView = toolbar;
     }
     for (UITextField *textField in self.localSizeTextFields) {
+        textField.inputAccessoryView = toolbar;
+    }
+    // NEW: Apply input accessory view to dynamic input text fields
+    for (UITextField *textField in self.inputTextFields) {
         textField.inputAccessoryView = toolbar;
     }
     // No input accessory view for UITextView, as it typically has its own keyboard actions
