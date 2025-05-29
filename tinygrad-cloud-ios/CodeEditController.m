@@ -1,13 +1,5 @@
 #import "CodeEditController.h"
 
-// Define NSUserDefaults keys for sizes
-static NSString *const kGlobalSizeXKey = @"globalSizeX";
-static NSString *const kGlobalSizeYKey = @"globalSizeY";
-static NSString *const kGlobalSizeZKey = @"globalSizeZ";
-static NSString *const kLocalSizeXKey = @"localSizeX";
-static NSString *const kLocalSizeYKey = @"localSizeY";
-static NSString *const kLocalSizeZKey = @"localSizeZ";
-
 @interface CodeEditController () <UITextFieldDelegate>
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
@@ -68,29 +60,36 @@ static NSString *const kLocalSizeZKey = @"localSizeZ";
 
         // Load saved sizes or use default "1"
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        NSArray<NSString *> *globalKeys = @[kGlobalSizeXKey, kGlobalSizeYKey, kGlobalSizeZKey];
-        NSArray<NSString *> *localKeys = @[kLocalSizeXKey, kLocalSizeYKey, kLocalSizeZKey];
+        NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for dynamic keys
 
         for (int i = 0; i < 3; i++) {
+            // Global Size Text Field
             UITextField *globalTF = [[UITextField alloc] init];
             globalTF.placeholder = (i == 0) ? @"X" : ((i == 1) ? @"Y" : @"Z");
             globalTF.keyboardType = UIKeyboardTypeNumberPad;
             globalTF.borderStyle = UITextBorderStyleRoundedRect;
             globalTF.delegate = self;
-            // Load saved value, otherwise default to "1"
-            globalTF.text = [defaults stringForKey:globalKeys[i]] ?: @"1";
+            
+            // Construct dynamic key for global size
+            NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
+            globalTF.text = [defaults stringForKey:globalKey] ?: @"1"; // Load per-kernel value
+            
             globalTF.tag = 100 + i; // Assign unique tags
             globalTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:globalTF];
             [self.globalSizeTextFields addObject:globalTF];
 
+            // Local Size Text Field
             UITextField *localTF = [[UITextField alloc] init];
             localTF.placeholder = (i == 0) ? @"X" : ((i == 1) ? @"Y" : @"Z");
             localTF.keyboardType = UIKeyboardTypeNumberPad;
             localTF.borderStyle = UITextBorderStyleRoundedRect;
             localTF.delegate = self;
-            // Load saved value, otherwise default to "1"
-            localTF.text = [defaults stringForKey:localKeys[i]] ?: @"1";
+
+            // Construct dynamic key for local size
+            NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
+            localTF.text = [defaults stringForKey:localKey] ?: @"1"; // Load per-kernel value
+            
             localTF.tag = 200 + i; // Assign unique tags
             localTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:localTF];
@@ -210,14 +209,16 @@ static NSString *const kLocalSizeZKey = @"localSizeZ";
         self.onSave(self.textView.text);
     }
 
-    // Save the global and local sizes to NSUserDefaults
+    // Save the global and local sizes to NSUserDefaults for this specific kernel
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSArray<NSString *> *globalKeys = @[kGlobalSizeXKey, kGlobalSizeYKey, kGlobalSizeZKey];
-    NSArray<NSString *> *localKeys = @[kLocalSizeXKey, kLocalSizeYKey, kLocalSizeZKey];
+    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for dynamic keys
 
     for (int i = 0; i < 3; i++) {
-        [defaults setObject:self.globalSizeTextFields[i].text forKey:globalKeys[i]];
-        [defaults setObject:self.localSizeTextFields[i].text forKey:localKeys[i]];
+        NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
+        NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
+        
+        [defaults setObject:self.globalSizeTextFields[i].text forKey:globalKey];
+        [defaults setObject:self.localSizeTextFields[i].text forKey:localKey];
     }
     [defaults synchronize]; // Ensure immediate saving
 
