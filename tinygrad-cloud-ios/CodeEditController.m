@@ -567,19 +567,11 @@ static id<MTLCommandQueue> mtl_queue;
 
     // Wait for completion and get result (from the first buffer, if available)
     [commandBuffer waitUntilCompleted];
-
-    if (buffers.count > 0 && [buffers[0] length] >= sizeof(float)) {
-        float *resultPtr = (float *)[buffers[0] contents];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.resultLabel.textColor = [UIColor systemBlueColor]; // Indicate successful execution
-            self.resultLabel.text = [NSString stringWithFormat:@"Kernel Ran! First float in Buffer 0: %.4f", resultPtr[0]];
-        });
-    } else {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.resultLabel.textColor = [UIColor systemBlueColor];
-            self.resultLabel.text = @"Kernel Ran! No valid output from Buffer 0 (or buffer is too small).";
-        });
-    }
+    float gpuTimeMs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1000.0);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.resultLabel.textColor = [UIColor systemBlueColor];
+        self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.3f ms", gpuTimeMs];
+    });
 }
 
 #pragma mark - Keyboard Handling
