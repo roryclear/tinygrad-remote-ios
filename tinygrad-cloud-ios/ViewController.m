@@ -11,6 +11,9 @@
 
     self.isRemoteEnabled = NO;
     self.myKernels = [NSMutableDictionary dictionary];
+    self.myKernelNames = [NSMutableArray array]; // Initialize the new array
+
+    [self loadMyKernels]; // Load saved kernels
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.dataSource = self;
@@ -30,7 +33,7 @@
     self.ipLabel = [[UILabel alloc] init];
     self.ipLabel.text = @"Turn on tinygrad remote";
     self.ipLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
-    
+
     [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
         if ([tinygrad isSaveKernelsEnabled]) {
             self.kernelTimes = [tinygrad getKernelTimes];
@@ -42,21 +45,50 @@
 }
 
 - (void)addCustomKernel {
-    NSString *defaultName = [NSString stringWithFormat:@"Custom Kernel %lu", (unsigned long)self.myKernels.count + 1];
-    NSString *defaultCode = @"// Enter your kernel code here\n// This is your custom kernel";
-    self.myKernels[defaultName] = defaultCode;
-    [self showKernelEditor:defaultName];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Custom Kernel"
+                                                                   message:@"Enter a name for your new kernel:"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"Kernel Name";
+        textField.text = [NSString stringWithFormat:@"Custom Kernel %lu", (unsigned long)self.myKernels.count + 1];
+    }];
+
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
+    UIAlertAction *createAction = [UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        UITextField *nameTextField = alert.textFields.firstObject;
+        NSString *kernelName = nameTextField.text;
+        if (kernelName.length > 0 && ![self.myKernels.allKeys containsObject:kernelName]) {
+            NSString *defaultCode = @"// Enter your kernel code here\n// This is your custom kernel";
+            self.myKernels[kernelName] = defaultCode;
+            [self.myKernelNames addObject:kernelName]; // Add to ordered list
+            [self saveMyKernels]; // Save after adding
+            [self showKernelEditor:kernelName];
+        } else {
+            // Handle duplicate or empty name
+            UIAlertController *errorAlert = [UIAlertController alertControllerWithTitle:@"Error"
+                                                                                message:@"Kernel name already exists or is empty."
+                                                                         preferredStyle:UIAlertControllerStyleAlert];
+            [errorAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:errorAlert animated:YES completion:nil];
+        }
+    }];
+
+    [alert addAction:cancelAction];
+    [alert addAction:createAction];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showKernelEditor:(NSString *)kernelName {
     CodeEditController *vc = [[CodeEditController alloc] initWithCode:self.myKernels[kernelName] title:kernelName];
-    
+
     __weak typeof(self) weakSelf = self;
     vc.onSave = ^(NSString *code) {
         weakSelf.myKernels[kernelName] = code;
+        [weakSelf saveMyKernels]; // Save after editing
         [weakSelf.tableView reloadData];
     };
-    
+
     [self.navigationController pushViewController:vc animated:YES];
 }
 
@@ -87,6 +119,27 @@
     });
 }
 
+- (void)saveMyKernels {
+    [[NSUserDefaults standardUserDefaults] setObject:self.myKernels forKey:@"myKernels"];
+    [[NSUserDefaults standardUserDefaults] setObject:self.myKernelNames forKey:@"myKernelNames"]; // Save the ordered names
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)loadMyKernels {
+    NSDictionary *savedKernels = [[NSUserDefaults standardUserDefaults] dictionaryForKey:@"myKernels"];
+    if (savedKernels) {
+        self.myKernels = [savedKernels mutableCopy];
+    }
+
+    NSArray *savedKernelNames = [[NSUserDefaults standardUserDefaults] arrayForKey:@"myKernelNames"];
+    if (savedKernelNames) {
+        self.myKernelNames = [savedKernelNames mutableCopy];
+    } else {
+        // If names weren't saved before, try to reconstruct from keys (loss of order)
+        self.myKernelNames = [[self.myKernels allKeys] mutableCopy];
+    }
+}
+
 #pragma mark - UITableViewDataSource
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -95,7 +148,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
-    if (section == 1) return self.myKernels.count;
+    if (section == 1) return self.myKernelNames.count; // Use myKernelNames.count
     if (section == 2 && [tinygrad isSaveKernelsEnabled]) return [tinygrad getKernelKeys].count;
     return 0;
 }
@@ -132,9 +185,8 @@
         }
     }
     else if (indexPath.section == 1) {
-        NSArray *myKernelNames = [self.myKernels allKeys];
-        if (indexPath.row < myKernelNames.count) {
-            NSString *kernelName = myKernelNames[indexPath.row];
+        if (indexPath.row < self.myKernelNames.count) {
+            NSString *kernelName = self.myKernelNames[indexPath.row]; // Use the ordered name
             cell.textLabel.text = kernelName;
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
@@ -183,9 +235,9 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 1) {
-        NSArray *myKernelNames = [self.myKernels allKeys];
-        if (indexPath.row < myKernelNames.count) {
-            [self showKernelEditor:myKernelNames[indexPath.row]];
+        if (indexPath.row < self.myKernelNames.count) {
+            NSString *kernelName = self.myKernelNames[indexPath.row]; // Use the ordered name
+            [self showKernelEditor:kernelName];
         }
     }
     else if (indexPath.section == 2) {
@@ -206,10 +258,11 @@
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 1) {
-        NSArray *myKernelNames = [self.myKernels allKeys];
-        if (indexPath.row < myKernelNames.count) {
-            NSString *kernelName = myKernelNames[indexPath.row];
+        if (indexPath.row < self.myKernelNames.count) {
+            NSString *kernelName = self.myKernelNames[indexPath.row];
             [self.myKernels removeObjectForKey:kernelName];
+            [self.myKernelNames removeObjectAtIndex:indexPath.row]; // Remove from ordered list
+            [self saveMyKernels]; // Save after deletion
             [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
         }
     }
