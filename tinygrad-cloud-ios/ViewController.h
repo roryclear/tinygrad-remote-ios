@@ -1,6 +1,5 @@
 #import <UIKit/UIKit.h>
 #import "tinygrad.h"
-#import "CodeViewController.h"
 #import "CodeEditController.h"
 
 @interface ViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>

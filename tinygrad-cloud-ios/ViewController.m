@@ -1,6 +1,5 @@
 #import "ViewController.h"
 #import "tinygrad.h"
-#import "CodeViewController.h"
 #import "CodeEditController.h"
 
 @implementation ViewController
@@ -99,6 +98,9 @@
     __weak typeof(self) weakSelf = self;
     vc.onSave = ^(NSString *code) {
         weakSelf.myKernels[kernelName] = code;
+        if (![weakSelf.myKernelNames containsObject:kernelName]) {
+            [weakSelf.myKernelNames addObject:kernelName]; // Add to ordered list if not already present
+        }
         [weakSelf saveMyKernels]; // Save after editing
         [weakSelf.tableView reloadData];
     };
@@ -298,10 +300,15 @@
     else if (indexPath.section == 2) {
         NSArray<NSString *> *keys = [tinygrad getKernelKeys];
         if (indexPath.row < keys.count) {
-            NSString *key = keys[indexPath.row];
-            NSString *code = [tinygrad getKernelCodeForKey:key];
-            CodeViewController *vc = [[CodeViewController alloc] initWithCode:code title:key];
-            [self.navigationController pushViewController:vc animated:YES];
+            NSString *kernelName = keys[indexPath.row];
+            NSString *code = [tinygrad getKernelCodeForKey:kernelName];
+            // Add to myKernels if not already present to allow saving
+            if (![self.myKernels.allKeys containsObject:kernelName]) {
+                self.myKernels[kernelName] = code;
+                [self.myKernelNames addObject:kernelName]; // Add to ordered list
+                [self saveMyKernels]; // Save to persist the new kernel
+            }
+            [self showKernelEditor:kernelName];
         }
     }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
