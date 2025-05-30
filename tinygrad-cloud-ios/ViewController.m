@@ -34,8 +34,8 @@
     self.ipLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
 
     [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
-        if ([tinygrad isSaveKernelsEnabled]) {
-            self.kernelTimes = [tinygrad getKernelTimes];
+        if (save_kernels) {
+            self.kernelTimes = [kernel_times copy];
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self.tableView reloadData];
             });
@@ -165,13 +165,13 @@
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
     if (section == 1) return self.myKernelNames.count; // Use myKernelNames.count
-    if (section == 2 && [tinygrad isSaveKernelsEnabled]) return [tinygrad getKernelKeys].count;
+    if (section == 2 && save_kernels) return [kernel_keys count];
     return 0;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 1) return @"MY KERNELS";
-    if (section == 2 && [tinygrad isSaveKernelsEnabled]) return @"Tinygrad Kernels";
+    if (section == 2 && save_kernels) return @"Tinygrad Kernels";
     return nil;
 }
 
@@ -249,7 +249,7 @@
         }
     }
     else if (indexPath.section == 2) {
-        NSArray<NSString *> *keys = [tinygrad getKernelKeys];
+        NSArray<NSString *> *keys = [kernel_keys copy];
         if (indexPath.row < keys.count) {
             NSString *kernelName = keys[indexPath.row];
             NSNumber *time = self.kernelTimes[kernelName];
@@ -298,10 +298,10 @@
         }
     }
     else if (indexPath.section == 2) {
-        NSArray<NSString *> *keys = [tinygrad getKernelKeys];
+        NSArray<NSString *> *keys = [kernel_keys copy];
         if (indexPath.row < keys.count) {
             NSString *kernelName = keys[indexPath.row];
-            NSString *code = [tinygrad getKernelCodeForKey:kernelName];
+            NSString *code = saved_kernels[kernelName];
             // Add to myKernels if not already present to allow saving
             if (![self.myKernels.allKeys containsObject:kernelName]) {
                 self.myKernels[kernelName] = code;

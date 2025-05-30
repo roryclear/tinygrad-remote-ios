@@ -84,8 +84,8 @@ static id<MTLCommandQueue> mtl_queue;
         NSArray<NSNumber *> *tinygradDims = nil;
 
         // Check if this is a tinygrad kernel and get dimensions if available
-        if ([tinygrad getKernelCodeForKey:title]) {
-            tinygradDims = [tinygrad getDimsForKey:title];
+        if (saved_kernels[title]) {
+            tinygradDims = kernel_dims[title];
         }
 
         for (int i = 0; i < 3; i++) {

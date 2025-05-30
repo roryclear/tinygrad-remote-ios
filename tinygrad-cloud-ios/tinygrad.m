@@ -11,11 +11,11 @@ static NSMutableDictionary<NSString *, id> *buffers;
 static NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 static id<MTLCommandQueue> mtl_queue;
 static CFSocketRef _socket;
-static BOOL save_kernels = NO;
-static NSMutableArray<NSString *> *kernel_keys = nil;
-static NSMutableDictionary<NSString *, id> *saved_kernels = nil;
-static NSMutableDictionary<NSString *, id> *kernel_dims = nil;
-static NSMutableDictionary<NSString *, id> *kernel_times = nil;
+BOOL save_kernels = NO;
+NSMutableArray<NSString *> *kernel_keys = nil;
+NSMutableDictionary<NSString *, id> *saved_kernels = nil;
+NSMutableDictionary<NSString *, id> *kernel_dims = nil;
+NSMutableDictionary<NSString *, id> *kernel_times = nil;
 
 @implementation tinygrad
 
@@ -26,23 +26,7 @@ static NSMutableDictionary<NSString *, id> *kernel_times = nil;
         sharedInstance = [[self alloc] init];
     });
 }
-
 + (void)toggleSaveKernels { save_kernels = !save_kernels;}
-+ (BOOL)isSaveKernelsEnabled {
-    return save_kernels;
-}
-+ (NSArray<NSString *> *)getKernelKeys {
-    return [kernel_keys copy];
-}
-+ (NSDictionary<NSString *, NSNumber *> *)getKernelTimes {
-    return [kernel_times copy];
-}
-+ (NSString *)getKernelCodeForKey:(NSString *)key {
-    return saved_kernels[key];
-}
-+ (NSArray *)getDimsForKey:(NSString *)key {
-    return kernel_dims[key];
-}
 
 - (instancetype)init {
     self = [super init];
