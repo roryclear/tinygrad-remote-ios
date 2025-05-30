@@ -12,16 +12,12 @@ static id<MTLCommandQueue> mtl_queue;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *bufferSizeTextFields;
 @property (nonatomic, strong) UILabel *resultLabel;
 @property (nonatomic, strong) NSNumber *lastExecutionTime; // in microseconds
-
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
-
-// Property to hold the dynamic height constraint for the textView
+@property (nonatomic, strong) UILabel *bufferLabel;
+@property (nonatomic, strong) UIButton *runButton; // Added property for runButton
 @property (nonatomic, strong) NSLayoutConstraint *textViewDynamicHeightConstraint;
-
-// Declare runTapped method in the interface so it's visible within the @implementation
 - (void)runTapped;
-
 @end
 
 @implementation CodeEditController
@@ -35,10 +31,8 @@ static id<MTLCommandQueue> mtl_queue;
         self.title = title;
         self.view.backgroundColor = [UIColor systemBackgroundColor];
 
-        // Declare padding here, at the beginning of the method
         CGFloat padding = 10.0;
 
-        // Add a UIScrollView to handle keyboard appearance and long content
         self.scrollView = [[UIScrollView alloc] init];
         self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.view addSubview:self.scrollView];
@@ -47,21 +41,19 @@ static id<MTLCommandQueue> mtl_queue;
         self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.scrollView addSubview:self.contentView];
 
-        // Text view
         self.textView = [[UITextView alloc] init];
-        self.textView.text = code; // Set the initial code here
+        self.textView.text = code;
         self.textView.font = [UIFont monospacedSystemFontOfSize:14 weight:UIFontWeightRegular];
         self.textView.autocorrectionType = UITextAutocorrectionTypeNo;
         self.textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
         self.textView.layer.borderColor = [UIColor systemGray5Color].CGColor;
         self.textView.layer.borderWidth = 1.0;
         self.textView.layer.cornerRadius = 5.0;
-        self.textView.alwaysBounceVertical = YES; // This enables its own internal scrolling if content is too long for its frame
-        self.textView.scrollEnabled = NO; // IMPORTANT: Disable internal scrolling to allow parent UIScrollView to handle it
+        self.textView.alwaysBounceVertical = YES;
+        self.textView.scrollEnabled = NO;
         self.textView.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:self.textView];
 
-        // Global and Local Size Labels and TextFields
         self.globalSizeTextFields = [NSMutableArray array];
         self.localSizeTextFields = [NSMutableArray array];
         self.bufferSizeTextFields = [NSMutableArray array];
@@ -78,72 +70,59 @@ static id<MTLCommandQueue> mtl_queue;
         localLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:localLabel];
 
-        // Load saved sizes or use defaults
+        self.bufferLabel = [[UILabel alloc] init];
+        self.bufferLabel.text = @"Buffer Sizes (bytes):";
+        self.bufferLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+        self.bufferLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:self.bufferLabel];
+
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for dynamic keys
+        NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"];
         NSArray<NSNumber *> *tinygradDims = nil;
 
-        // Check if this is a tinygrad kernel and get dimensions if available
         if (saved_kernels[title]) {
             tinygradDims = kernel_dims[title];
         }
 
         for (int i = 0; i < 3; i++) {
-            // Global Size Text Field
             UITextField *globalTF = [[UITextField alloc] init];
             globalTF.placeholder = (i == 0) ? @"X" : ((i == 1) ? @"Y" : @"Z");
             globalTF.keyboardType = UIKeyboardTypeNumberPad;
             globalTF.borderStyle = UITextBorderStyleRoundedRect;
             globalTF.delegate = self;
-            
-            // Set global size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
             NSString *globalText = [defaults stringForKey:globalKey];
             if (!globalText && tinygradDims && i < tinygradDims.count && [tinygradDims[i] intValue] > 0) {
-                globalText = [tinygradDims[i] stringValue]; // Use tinygrad global size (indices 0, 1, 2)
+                globalText = [tinygradDims[i] stringValue];
             }
             globalTF.text = globalText ?: @"1";
-            
-            globalTF.tag = 100 + i; // Assign unique tags for keyboard handling
+            globalTF.tag = 100 + i;
             globalTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:globalTF];
             [self.globalSizeTextFields addObject:globalTF];
 
-            // Local Size Text Field
             UITextField *localTF = [[UITextField alloc] init];
             localTF.placeholder = (i == 0) ? @"X" : ((i == 1) ? @"Y" : @"Z");
             localTF.keyboardType = UIKeyboardTypeNumberPad;
             localTF.borderStyle = UITextBorderStyleRoundedRect;
             localTF.delegate = self;
-
-            // Set local size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
             NSString *localText = [defaults stringForKey:localKey];
             if (!localText && tinygradDims && i + 3 < tinygradDims.count && [tinygradDims[i + 3] intValue] > 0) {
-                localText = [tinygradDims[i + 3] stringValue]; // Use tinygrad local size (indices 3, 4, 5)
+                localText = [tinygradDims[i + 3] stringValue];
             }
             localTF.text = localText ?: @"1";
-            
-            localTF.tag = 200 + i; // Assign unique tags for keyboard handling
+            localTF.tag = 200 + i;
             localTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:localTF];
             [self.localSizeTextFields addObject:localTF];
         }
 
-        // Buffer Size Label and TextFields
-        UILabel *bufferLabel = [[UILabel alloc] init];
-        bufferLabel.text = @"Buffer Sizes (bytes):";
-        bufferLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
-        bufferLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:bufferLabel];
-
-        // Determine number of buffers: prefer kernel_buffer_sizes, then fall back to regex
         NSUInteger totalBuffers = 0;
         NSArray<NSNumber *> *bufferSizes = kernel_buffer_sizes[title];
         if (bufferSizes && [bufferSizes isKindOfClass:[NSArray class]] && bufferSizes.count > 0) {
             totalBuffers = bufferSizes.count;
         } else {
-            // Fallback to counting 'device' and 'constant' keywords
             NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
             NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
             totalBuffers = deviceCount + constantCount;
@@ -155,30 +134,25 @@ static id<MTLCommandQueue> mtl_queue;
             bufferTF.keyboardType = UIKeyboardTypeNumberPad;
             bufferTF.borderStyle = UITextBorderStyleRoundedRect;
             bufferTF.delegate = self;
-
-            // Load buffer size: prefer saved value, then kernel_buffer_sizes, then default "8"
             NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
             NSString *bufferText = [defaults stringForKey:bufferKey];
             if (!bufferText && bufferSizes && i < bufferSizes.count && [bufferSizes[i] integerValue] > 0) {
-                bufferText = [bufferSizes[i] stringValue]; // Use size from kernel_buffer_sizes
+                bufferText = [bufferSizes[i] stringValue];
             }
             bufferTF.text = bufferText ?: @"8";
-
-            bufferTF.tag = 300 + i; // Assign unique tags for keyboard handling
+            bufferTF.tag = 300 + i;
             bufferTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:bufferTF];
             [self.bufferSizeTextFields addObject:bufferTF];
         }
 
-        // Run Button
-        UIButton *runButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [runButton setTitle:@"Run Kernel" forState:UIControlStateNormal];
-        [runButton addTarget:self action:@selector(runTapped) forControlEvents:UIControlEventTouchUpInside];
-        runButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-        runButton.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:runButton];
+        self.runButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [self.runButton setTitle:@"Run Kernel" forState:UIControlStateNormal];
+        [self.runButton addTarget:self action:@selector(runTapped) forControlEvents:UIControlEventTouchUpInside];
+        self.runButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+        self.runButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:self.runButton];
 
-        // Result Label
         self.resultLabel = [[UILabel alloc] init];
         self.resultLabel.textAlignment = NSTextAlignmentCenter;
         self.resultLabel.font = [UIFont systemFontOfSize:16];
@@ -186,7 +160,6 @@ static id<MTLCommandQueue> mtl_queue;
         self.resultLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:self.resultLabel];
 
-        // Constraints for scrollView and contentView
         [NSLayoutConstraint activateConstraints:@[
             [self.scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
             [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -197,18 +170,15 @@ static id<MTLCommandQueue> mtl_queue;
             [self.contentView.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor],
             [self.contentView.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor],
             [self.contentView.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor],
-            [self.contentView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor] // Important for vertical scrolling
+            [self.contentView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor]
         ]];
 
-        // Initialize the dynamic height constraint
         CGFloat initialTextViewWidth = CGRectGetWidth(self.view.bounds) - (2 * padding);
-        if (initialTextViewWidth <= 0) initialTextViewWidth = 300; // Fallback if view bounds not yet available
-        
+        if (initialTextViewWidth <= 0) initialTextViewWidth = 300;
         CGSize initialSize = [self.textView sizeThatFits:CGSizeMake(initialTextViewWidth, CGFLOAT_MAX)];
         self.textViewDynamicHeightConstraint = [self.textView.heightAnchor constraintEqualToConstant:MAX(initialSize.height, 250.0)];
         [self.textViewDynamicHeightConstraint setActive:YES];
 
-        // Constraints for elements within contentView
         NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray array];
         [constraints addObjectsFromArray:@[
             [self.textView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
@@ -216,7 +186,6 @@ static id<MTLCommandQueue> mtl_queue;
             [self.textView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
             [self.textView.heightAnchor constraintGreaterThanOrEqualToConstant:250],
 
-            // Global Size
             [globalLabel.topAnchor constraintEqualToAnchor:self.textView.bottomAnchor constant:padding],
             [globalLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
 
@@ -232,7 +201,6 @@ static id<MTLCommandQueue> mtl_queue;
             [self.globalSizeTextFields[2].leadingAnchor constraintEqualToAnchor:self.globalSizeTextFields[1].trailingAnchor constant:padding],
             [self.globalSizeTextFields[2].widthAnchor constraintEqualToConstant:70],
 
-            // Local Size
             [localLabel.topAnchor constraintEqualToAnchor:self.globalSizeTextFields[0].bottomAnchor constant:padding],
             [localLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
 
@@ -248,13 +216,11 @@ static id<MTLCommandQueue> mtl_queue;
             [self.localSizeTextFields[2].leadingAnchor constraintEqualToAnchor:self.localSizeTextFields[1].trailingAnchor constant:padding],
             [self.localSizeTextFields[2].widthAnchor constraintEqualToConstant:70],
 
-            // Buffer Size
-            [bufferLabel.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding],
-            [bufferLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+            [self.bufferLabel.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding],
+            [self.bufferLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
         ]];
 
-        // Dynamic constraints for buffer size text fields
-        NSLayoutAnchor *lastAnchor = bufferLabel.bottomAnchor;
+        NSLayoutAnchor *lastAnchor = self.bufferLabel.bottomAnchor;
         for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
             UITextField *bufferTF = self.bufferSizeTextFields[i];
             [constraints addObjectsFromArray:@[
@@ -265,14 +231,12 @@ static id<MTLCommandQueue> mtl_queue;
             lastAnchor = bufferTF.bottomAnchor;
         }
 
-        // Run Button and Result Label
         [constraints addObjectsFromArray:@[
-            [runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
-            [runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-            [runButton.heightAnchor constraintEqualToConstant:44],
+            [self.runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
+            [self.runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+            [self.runButton.heightAnchor constraintEqualToConstant:44],
 
-            // Result Label
-            [self.resultLabel.topAnchor constraintEqualToAnchor:runButton.bottomAnchor constant:padding],
+            [self.resultLabel.topAnchor constraintEqualToAnchor:self.runButton.bottomAnchor constant:padding],
             [self.resultLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [self.resultLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
             [self.resultLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-padding],
@@ -280,12 +244,10 @@ static id<MTLCommandQueue> mtl_queue;
 
         [NSLayoutConstraint activateConstraints:constraints];
 
-        // Navigation items
         self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
                                                                                               target:self
                                                                                               action:@selector(saveTapped)];
 
-        // Register for keyboard notifications
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(keyboardWillShow:)
                                                      name:UIKeyboardWillShowNotification
@@ -299,7 +261,6 @@ static id<MTLCommandQueue> mtl_queue;
                                                      name:UITextViewTextDidChangeNotification
                                                    object:self.textView];
 
-        // Force layout and update text view height for initial content
         [self.view layoutIfNeeded];
         [self updateTextViewHeight];
     }
@@ -314,32 +275,25 @@ static id<MTLCommandQueue> mtl_queue;
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    
-    // Update text view height to ensure it fits content during layout changes
     [self updateTextViewHeight];
 }
 
 - (void)textViewDidChangeNotification:(NSNotification *)notification {
-    // Update text view height when content changes
     [self updateTextViewHeight];
 }
 
 - (void)updateTextViewHeight {
-    // Ensure the text view has a valid width
     CGFloat fixedWidth = self.textView.frame.size.width;
     if (fixedWidth <= 0) {
-        fixedWidth = CGRectGetWidth(self.view.bounds) - 20.0; // Fallback: 10.0 padding on each side
-        if (fixedWidth <= 0) fixedWidth = 300; // Absolute fallback
+        fixedWidth = CGRectGetWidth(self.view.bounds) - 20.0;
+        if (fixedWidth <= 0) fixedWidth = 300;
     }
 
-    // Calculate the content size
     CGSize newSize = [self.textView sizeThatFits:CGSizeMake(fixedWidth, CGFLOAT_MAX)];
-    CGFloat targetHeight = MAX(newSize.height, 250.0); // Respect minimum height of 250
+    CGFloat targetHeight = MAX(newSize.height, 250.0);
 
-    // Update the dynamic height constraint if needed
     if (fabs(self.textViewDynamicHeightConstraint.constant - targetHeight) > 0.1) {
         self.textViewDynamicHeightConstraint.constant = targetHeight;
-        // Animate the layout change for smoothness
         [UIView animateWithDuration:0.1 animations:^{
             [self.view layoutIfNeeded];
         }];
@@ -349,38 +303,110 @@ static id<MTLCommandQueue> mtl_queue;
 #pragma mark - Actions
 
 - (void)saveTapped {
-    [self.view endEditing:YES]; // Dismiss keyboard before saving
+    [self.view endEditing:YES];
 
-    // Save the kernel code
     if (self.onSave) {
         self.onSave(self.textView.text);
     }
 
-    // Save the global, local, and buffer sizes to NSUserDefaults for this specific kernel
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for global and local sizes
+    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"];
 
     for (int i = 0; i < 3; i++) {
         NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
         NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
-        
         [defaults setObject:self.globalSizeTextFields[i].text forKey:globalKey];
         [defaults setObject:self.localSizeTextFields[i].text forKey:localKey];
     }
 
-    // Save buffer sizes
     for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
         NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
         [defaults setObject:self.bufferSizeTextFields[i].text forKey:bufferKey];
     }
 
-    [defaults synchronize]; // Ensure immediate saving
+    [defaults synchronize];
 }
 
 - (void)runTapped {
-    [self.view endEditing:YES]; // Dismiss keyboard
+    [self.view endEditing:YES];
 
     NSString *kernelCode = self.textView.text;
+
+    // Determine number of buffers
+    NSUInteger totalBuffers = 0;
+    NSArray<NSNumber *> *bufferSizes = kernel_buffer_sizes[_originalTitle];
+    if (bufferSizes && [bufferSizes isKindOfClass:[NSArray class]] && bufferSizes.count > 0) {
+        totalBuffers = bufferSizes.count;
+    } else {
+        NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
+        NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
+        totalBuffers = deviceCount + constantCount;
+    }
+
+    // Remove existing buffer text fields
+    for (UITextField *bufferTF in self.bufferSizeTextFields) {
+        [bufferTF removeFromSuperview];
+    }
+    [self.bufferSizeTextFields removeAllObjects];
+
+    // Recreate buffer text fields
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    for (NSUInteger i = 0; i < totalBuffers; i++) {
+        UITextField *bufferTF = [[UITextField alloc] init];
+        bufferTF.placeholder = [NSString stringWithFormat:@"Buffer %lu", (unsigned long)(i + 1)];
+        bufferTF.keyboardType = UIKeyboardTypeNumberPad;
+        bufferTF.borderStyle = UITextBorderStyleRoundedRect;
+        bufferTF.delegate = self;
+        NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
+        NSString *bufferText = [defaults stringForKey:bufferKey];
+        if (!bufferText && bufferSizes && i < bufferSizes.count && [bufferSizes[i] integerValue] > 0) {
+            bufferText = [bufferSizes[i] stringValue];
+        }
+        bufferTF.text = bufferText ?: @"8";
+        bufferTF.tag = 300 + i;
+        bufferTF.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:bufferTF];
+        [self.bufferSizeTextFields addObject:bufferTF];
+    }
+
+    // Update constraints for buffer text fields
+    CGFloat padding = 10.0;
+    NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray array];
+    NSLayoutAnchor *lastAnchor = self.bufferLabel.bottomAnchor;
+    for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
+        UITextField *bufferTF = self.bufferSizeTextFields[i];
+        [constraints addObjectsFromArray:@[
+            [bufferTF.topAnchor constraintEqualToAnchor:lastAnchor constant:padding/2],
+            [bufferTF.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+            [bufferTF.widthAnchor constraintEqualToConstant:100],
+        ]];
+        lastAnchor = bufferTF.bottomAnchor;
+    }
+
+    // Update constraints for runButton and resultLabel
+    [constraints addObjectsFromArray:@[
+        [self.runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
+        [self.runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [self.runButton.heightAnchor constraintEqualToConstant:44],
+
+        [self.resultLabel.topAnchor constraintEqualToAnchor:self.runButton.bottomAnchor constant:padding],
+        [self.resultLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+        [self.resultLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
+        [self.resultLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-padding],
+    ]];
+
+    // Deactivate old constraints for runButton and resultLabel
+    for (NSLayoutConstraint *constraint in self.contentView.constraints) {
+        if ((constraint.firstItem == self.runButton || constraint.secondItem == self.runButton ||
+             constraint.firstItem == self.resultLabel || constraint.secondItem == self.resultLabel)) {
+            [constraint setActive:NO];
+        }
+    }
+
+    [NSLayoutConstraint activateConstraints:constraints];
+
+    // Force layout update
+    [self.view layoutIfNeeded];
 
     NSError *error = nil;
     id<MTLLibrary> library = [device newLibraryWithSource:kernelCode options:nil error:&error];
@@ -391,7 +417,6 @@ static id<MTLCommandQueue> mtl_queue;
     }
 
     NSString *safeKernelName = [[self.originalTitle componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
-
     id<MTLFunction> kernelFunction = [library newFunctionWithName:safeKernelName];
     if (!kernelFunction) {
         self.resultLabel.textColor = [UIColor systemRedColor];
@@ -429,12 +454,6 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    // Infer the number of 'device' and 'constant' inputs from the kernel code
-    NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
-    NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
-    
-    NSUInteger totalBuffers = deviceCount + constantCount;
-
     id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
     id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
     [computeEncoder setComputePipelineState:pipelineState];
@@ -443,8 +462,8 @@ static id<MTLCommandQueue> mtl_queue;
     for (NSUInteger i = 0; i < totalBuffers; i++) {
         NSInteger byteSize = [self.bufferSizeTextFields[i].text integerValue];
         if (byteSize <= 0) {
-            byteSize = 8; // Default to 8 bytes if invalid
-            self.bufferSizeTextFields[i].text = @"8"; // Update UI to reflect default
+            byteSize = 8;
+            self.bufferSizeTextFields[i].text = @"8";
         }
 
         id<MTLBuffer> buffer = [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
@@ -459,7 +478,6 @@ static id<MTLCommandQueue> mtl_queue;
         [buffers addObject:buffer];
     }
 
-    // Encode and commit
     @try {
         [computeEncoder dispatchThreadgroups:globalSize threadsPerThreadgroup:localSize];
         [computeEncoder endEncoding];
@@ -500,19 +518,16 @@ static id<MTLCommandQueue> mtl_queue;
     self.scrollView.contentInset = contentInsets;
     self.scrollView.scrollIndicatorInsets = contentInsets;
 
-    // Find the currently active text field or text view
     UIView *activeInput = nil;
     if ([self.textView isFirstResponder]) {
         activeInput = self.textView;
     } else {
-        // Check global size text fields
         for (UITextField *textField in self.globalSizeTextFields) {
             if ([textField isFirstResponder]) {
                 activeInput = textField;
                 break;
             }
         }
-        // Check local size text fields
         if (!activeInput) {
             for (UITextField *textField in self.localSizeTextFields) {
                 if ([textField isFirstResponder]) {
@@ -521,7 +536,6 @@ static id<MTLCommandQueue> mtl_queue;
                 }
             }
         }
-        // Check buffer size text fields
         if (!activeInput) {
             for (UITextField *textField in self.bufferSizeTextFields) {
                 if ([textField isFirstResponder]) {
@@ -533,22 +547,18 @@ static id<MTLCommandQueue> mtl_queue;
     }
 
     if (activeInput) {
-        // Calculate the rect of the active input in the scroll view's coordinate system
         CGRect rect = [self.scrollView convertRect:activeInput.bounds fromView:activeInput];
-        // Adjust for any insets from the navigation bar/safe area if needed
-        rect.origin.y -= self.scrollView.contentOffset.y; // Account for current scroll offset
-        rect.size.height += 10; // Add some padding below the input field
+        rect.origin.y -= self.scrollView.contentOffset.y;
+        rect.size.height += 10;
 
-        // Check if the input is obscured by the keyboard
         CGRect visibleRect = self.scrollView.bounds;
-        visibleRect.size.height -= keyboardFrame.size.height; // Area visible above keyboard
+        visibleRect.size.height -= keyboardFrame.size.height;
 
         if (!CGRectContainsRect(visibleRect, rect)) {
             [self.scrollView scrollRectToVisible:rect animated:YES];
         }
     }
 
-    // Add a "Done" button to the number pad for text fields
     UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame:CGRectMake(0, 0, self.view.frame.size.width, 44)];
     UIBarButtonItem *flexSpace = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace target:nil action:nil];
     UIBarButtonItem *doneButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(doneButtonTapped)];
@@ -575,7 +585,7 @@ static id<MTLCommandQueue> mtl_queue;
 }
 
 - (void)doneButtonTapped {
-    [self.view endEditing:YES]; // Dismiss the keyboard
+    [self.view endEditing:YES];
 }
 
 #pragma mark - UITextFieldDelegate
@@ -589,7 +599,6 @@ static id<MTLCommandQueue> mtl_queue;
     [self.view endEditing:YES];
 }
 
-// Public method to update run result label (can still be used if run button is enabled later)
 - (void)updateRunResult:(NSString *)result isError:(BOOL)isError {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.resultLabel.textColor = isError ? [UIColor systemRedColor] : [UIColor systemGreenColor];
