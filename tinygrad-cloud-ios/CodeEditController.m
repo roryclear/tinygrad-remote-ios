@@ -568,14 +568,18 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    float gpuTimeMs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1000.0);
-    self.lastExecutionTime = @(gpuTimeMs * 1000); // Convert to microseconds
+    float gpuTimeNs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1e9);
+    self.lastExecutionTime = @(gpuTimeNs);
     NSString *timeKey = [NSString stringWithFormat:@"%@_lastExecutionTime", self.originalTitle];
     [[NSUserDefaults standardUserDefaults] setObject:self.lastExecutionTime forKey:timeKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
     dispatch_async(dispatch_get_main_queue(), ^{
         self.resultLabel.textColor = [UIColor systemBlueColor];
-        self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.3f ms", gpuTimeMs];
+        if (gpuTimeNs >= 1e6) {
+            self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.3f ms", gpuTimeNs / 1e6];
+        } else {
+            self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.0f µs", gpuTimeNs / 1e3];
+        }
     });
 }
 

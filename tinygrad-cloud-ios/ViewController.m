@@ -206,12 +206,17 @@
             NSNumber *time = [self getMyKernelTimes][kernelName];
             
             if (time) {
-                double microseconds = time.doubleValue;
-                // Convert to milliseconds for display (consistent with CodeEditController)
-                double milliseconds = microseconds / 1000.0;
-                timeLabel.text = [NSString stringWithFormat:@"%.3f ms", milliseconds];
+                double nanoseconds = time.doubleValue;
+
+                if (nanoseconds >= 1e6) {
+                    double milliseconds = nanoseconds / 1e6;
+                    timeLabel.text = [NSString stringWithFormat:@"%.3f ms", milliseconds];
+                } else {
+                    double microseconds = nanoseconds / 1e3;
+                    timeLabel.text = [NSString stringWithFormat:@"%.0f µs", microseconds];
+                }
             } else {
-                timeLabel.text = @"Not run";
+                timeLabel.text = @"";
             }
             
             timeLabel.font = [UIFont systemFontOfSize:14];
