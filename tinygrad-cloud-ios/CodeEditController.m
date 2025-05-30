@@ -9,6 +9,7 @@ static id<MTLCommandQueue> mtl_queue;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *localSizeTextFields;
 @property (nonatomic, strong) UILabel *resultLabel;
+@property (nonatomic, strong) NSNumber *lastExecutionTime; // in microseconds
 
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
@@ -568,6 +569,10 @@ static id<MTLCommandQueue> mtl_queue;
     }
 
     float gpuTimeMs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1000.0);
+    self.lastExecutionTime = @(gpuTimeMs * 1000); // Convert to microseconds
+    NSString *timeKey = [NSString stringWithFormat:@"%@_lastExecutionTime", self.originalTitle];
+    [[NSUserDefaults standardUserDefaults] setObject:self.lastExecutionTime forKey:timeKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
     dispatch_async(dispatch_get_main_queue(), ^{
         self.resultLabel.textColor = [UIColor systemBlueColor];
         self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.3f ms", gpuTimeMs];

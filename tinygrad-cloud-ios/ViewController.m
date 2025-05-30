@@ -44,6 +44,21 @@
     }];
 }
 
+- (NSDictionary *)getMyKernelTimes {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSMutableDictionary *times = [NSMutableDictionary dictionary];
+    
+    for (NSString *kernelName in self.myKernelNames) {
+        NSString *timeKey = [NSString stringWithFormat:@"%@_lastExecutionTime", kernelName];
+        NSNumber *time = [defaults objectForKey:timeKey];
+        if (time) {
+            times[kernelName] = time;
+        }
+    }
+    
+    return times;
+}
+
 - (void)addCustomKernel {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Custom Kernel"
                                                                    message:@"Enter a name for your new kernel:"
@@ -185,9 +200,45 @@
     }
     else if (indexPath.section == 1) {
         if (indexPath.row < self.myKernelNames.count) {
-            NSString *kernelName = self.myKernelNames[indexPath.row]; // Use the ordered name
-            cell.textLabel.text = kernelName;
+            NSString *kernelName = self.myKernelNames[indexPath.row];
+            
+            UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+            NSNumber *time = [self getMyKernelTimes][kernelName];
+            
+            if (time) {
+                double microseconds = time.doubleValue;
+                // Convert to milliseconds for display (consistent with CodeEditController)
+                double milliseconds = microseconds / 1000.0;
+                timeLabel.text = [NSString stringWithFormat:@"%.3f ms", milliseconds];
+            } else {
+                timeLabel.text = @"Not run";
+            }
+            
+            timeLabel.font = [UIFont systemFontOfSize:14];
+            timeLabel.textAlignment = NSTextAlignmentRight;
+            timeLabel.textColor = [UIColor secondaryLabelColor];
+            timeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+            [cell.contentView addSubview:timeLabel];
+
+            UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+            nameLabel.text = kernelName;
+            nameLabel.font = [UIFont systemFontOfSize:16];
+            nameLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+            nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+            [cell.contentView addSubview:nameLabel];
+
+            cell.textLabel.text = @"";
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+
+            [NSLayoutConstraint activateConstraints:@[
+                [timeLabel.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
+                [timeLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+                [timeLabel.widthAnchor constraintGreaterThanOrEqualToConstant:60],
+
+                [nameLabel.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:15],
+                [nameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:timeLabel.leadingAnchor constant:-10],
+                [nameLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+            ]];
         }
     }
     else if (indexPath.section == 2) {
