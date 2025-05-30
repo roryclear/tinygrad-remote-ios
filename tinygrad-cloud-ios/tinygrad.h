@@ -8,6 +8,7 @@ extern NSMutableDictionary<NSString *, id> *saved_kernels;
 extern NSMutableDictionary<NSString *, id> *kernel_dims;
 extern NSMutableDictionary<NSString *, id> *kernel_times;
 extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes;
+extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints;
 
 @interface tinygrad : NSObject
 + (NSString *)getIP;

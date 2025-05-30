@@ -18,6 +18,7 @@ NSMutableDictionary<NSString *, id> *kernel_dims = nil;
 NSMutableDictionary<NSString *, id> *kernel_times = nil;
 NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
+NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
 
 @implementation tinygrad
 
@@ -44,6 +45,7 @@ NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
         kernel_times = [[NSMutableDictionary alloc] init];
         buffer_sizes = [[NSMutableDictionary alloc] init];
         kernel_buffer_sizes = [[NSMutableDictionary alloc] init];
+        kernel_buffer_ints = [[NSMutableDictionary alloc] init];
         
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
@@ -200,6 +202,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [kernel_keys addObject: values[@"name"][0]];
                 [saved_kernels setObject:prg forKey:values[@"name"][0]];
                 [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
+                [kernel_buffer_ints setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
             }
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithSource:prg options:nil error:&error];
@@ -226,6 +229,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
             }
             for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
+                if(save_kernels && kernel_buffer_ints[values[@"name"][0]].count == i) [kernel_buffer_ints[values[@"name"][0]] addObject:@([values[@"vals"][i] integerValue])];
                 NSInteger value = [values[@"vals"][i] integerValue];
                 [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
             }
