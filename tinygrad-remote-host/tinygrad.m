@@ -11,16 +11,32 @@ static NSMutableDictionary<NSString *, id> *buffers;
 static NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 static id<MTLCommandQueue> mtl_queue;
 static CFSocketRef _socket;
+BOOL save_kernels = NO;
+NSMutableArray<NSString *> *kernel_keys = nil;
+NSMutableDictionary<NSString *, id> *saved_kernels = nil;
+NSMutableDictionary<NSString *, id> *kernel_dims = nil;
+NSMutableDictionary<NSString *, id> *kernel_times = nil;
+NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
+NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
+NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
+static tinygrad *sharedInstance = nil;
 
 @implementation tinygrad
 
+
 + (void)start {
-    static tinygrad *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sharedInstance = [[self alloc] init];
-    });
+    if (!sharedInstance) sharedInstance = [[self alloc] init];
 }
+
++ (void)stop {
+    if (_socket) {
+        CFSocketInvalidate(_socket);
+        CFRelease(_socket);
+        _socket = NULL;
+    }
+    sharedInstance = nil;
+}
++ (void)toggleSaveKernels { save_kernels = !save_kernels;}
 
 - (instancetype)init {
     self = [super init];
@@ -30,7 +46,14 @@ static CFSocketRef _socket;
         device = MTLCreateSystemDefaultDevice();
         mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
         mtl_buffers_in_flight = [[NSMutableArray alloc] init];
-
+        kernel_keys = [NSMutableArray array];
+        saved_kernels = [[NSMutableDictionary alloc] init];
+        kernel_dims = [[NSMutableDictionary alloc] init];
+        kernel_times = [[NSMutableDictionary alloc] init];
+        buffer_sizes = [[NSMutableDictionary alloc] init];
+        kernel_buffer_sizes = [[NSMutableDictionary alloc] init];
+        kernel_buffer_ints = [[NSMutableDictionary alloc] init];
+        
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
         struct sockaddr_in address; memset(&address, 0, sizeof(address)); address.sin_len = sizeof(address); address.sin_port = htons(6667); address.sin_addr.s_addr = INADDR_ANY;
@@ -55,7 +78,7 @@ static CFSocketRef _socket;
         }
         a = a->ifa_next;
     }
-    return ip ? [NSString stringWithFormat:@"device ip: %@:6667", ip] : @"Waiting for WiFi...";
+    return ip ? [NSString stringWithFormat:@"tinygrad: %@:6667", ip] : @"Waiting for WiFi...";
 }
 
 static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
@@ -164,6 +187,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
             [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
+            if (save_kernels) [buffer_sizes setObject:@([values[@"size"][0] intValue]) forKey:values[@"buffer_num"][0]];
         } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
             [buffers removeObjectForKey: values[@"buffer_num"][0]];
         } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
@@ -181,16 +205,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
             if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
             NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
-            NSError *error = nil;
-            id<MTLLibrary> library = [device newLibraryWithSource:prg
-                                                          options:nil
-                                                            error:&error];
-            if (error || !library) {
-                NSLog(@"Error creating Metal library: %@", error);
-                sendHTTPResponse(handle, "Error: Metal library creation failed", strlen("Error: Metal library creation failed"));
-                close(handle);
-                return;
+            if(save_kernels){
+                [kernel_keys addObject: values[@"name"][0]];
+                [saved_kernels setObject:prg forKey:values[@"name"][0]];
+                [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
+                [kernel_buffer_ints setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
             }
+            NSError *error = nil;
+            id<MTLLibrary> library = [device newLibraryWithSource:prg options:nil error:&error];
             MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
             descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];
             descriptor.supportIndirectCommandBuffers = YES;
@@ -210,25 +232,28 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
             [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
             for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
-                id<MTLBuffer> buffer = buffers[values[@"bufs"][i]];
-                if (buffer) { // Add nil check
-                    [encoder setBuffer:buffer offset:0 atIndex:i];
-                }
+                if(save_kernels && kernel_buffer_sizes[values[@"name"][0]].count == i) [kernel_buffer_sizes[values[@"name"][0]] addObject:buffer_sizes[values[@"bufs"][i]]];
+                [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
             }
             for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
+                if(save_kernels && kernel_buffer_ints[values[@"name"][0]].count == i) [kernel_buffer_ints[values[@"name"][0]] addObject:@([values[@"vals"][i] integerValue])];
                 NSInteger value = [values[@"vals"][i] integerValue];
                 [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
             }
             MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
             MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
+            if (save_kernels) [kernel_dims setObject:@[@([values[@"global_sizes"][0] intValue]), @([values[@"global_sizes"][1] intValue]), @([values[@"global_sizes"][2] intValue]), @([values[@"local_sizes"][0] intValue]), @([values[@"local_sizes"][1] intValue]), @([values[@"local_sizes"][2] intValue])] forKey:values[@"name"][0]];
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
-            if([values[@"wait"][0] isEqualToString:@"True"]) {
+            if([values[@"wait"][0] isEqualToString:@"True"] || save_kernels) {
                 [command_buffer waitUntilCompleted];
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
-                const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
-                sendHTTPResponse(handle, time_string, strlen(time_string));
+                [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:values[@"name"][0]]; //ns
+                if([values[@"wait"][0] isEqualToString:@"True"]){
+                    const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    sendHTTPResponse(handle, time_string, strlen(time_string));
+                }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
         }
