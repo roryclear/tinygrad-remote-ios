@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSString *> *)getKernelKeys;
 + (NSString *)getKernelCodeForKey:(NSString *)key; //todo do directly?
 + (NSDictionary<NSString *, NSNumber *> *)getKernelTimes;
++ (NSArray *)getDimsForKey:(NSString *)key;
 @end
 
 NS_ASSUME_NONNULL_END

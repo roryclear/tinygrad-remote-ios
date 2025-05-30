@@ -40,6 +40,11 @@ static NSMutableDictionary<NSString *, id> *kernel_times = nil;
 + (NSString *)getKernelCodeForKey:(NSString *)key {
     return saved_kernels[key];
 }
++ (NSArray *)getDimsForKey:(NSString *)key {
+    NSArray *ret = kernel_dims[key];
+    NSLog(@"rory ret =%@",ret);
+    return kernel_dims[key];
+}
 
 - (instancetype)init {
     self = [super init];
@@ -240,6 +245,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             }
             MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
             MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
+            if (save_kernels) [kernel_dims setObject:@[@([values[@"global_sizes"][0] intValue]), @([values[@"global_sizes"][1] intValue]), @([values[@"global_sizes"][2] intValue]), @([values[@"local_sizes"][0] intValue]), @([values[@"local_sizes"][1] intValue]), @([values[@"local_sizes"][2] intValue])] forKey:values[@"name"][0]];
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];

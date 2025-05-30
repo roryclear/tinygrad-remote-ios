@@ -1,5 +1,6 @@
 #import "CodeEditController.h"
 #import <Metal/Metal.h>
+#import "tinygrad.h"
 
 static id<MTLDevice> device;
 static id<MTLCommandQueue> mtl_queue;
@@ -75,9 +76,15 @@ static id<MTLCommandQueue> mtl_queue;
         localLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:localLabel];
 
-        // Load saved sizes or use default "1"
+        // Load saved sizes or use defaults
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for dynamic keys
+        NSArray<NSNumber *> *tinygradDims = nil;
+
+        // Check if this is a tinygrad kernel and get dimensions if available
+        if ([tinygrad getKernelCodeForKey:title]) {
+            tinygradDims = [tinygrad getDimsForKey:title];
+        }
 
         for (int i = 0; i < 3; i++) {
             // Global Size Text Field
@@ -87,9 +94,13 @@ static id<MTLCommandQueue> mtl_queue;
             globalTF.borderStyle = UITextBorderStyleRoundedRect;
             globalTF.delegate = self;
             
-            // Construct dynamic key for global size
+            // Set global size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
-            globalTF.text = [defaults stringForKey:globalKey] ?: @"1"; // Load per-kernel value
+            NSString *globalText = [defaults stringForKey:globalKey];
+            if (!globalText && tinygradDims && i < 3 && [tinygradDims[i] intValue] > 0) {
+                globalText = [tinygradDims[i] stringValue]; // Use tinygrad global size (indices 0, 1, 2)
+            }
+            globalTF.text = globalText ?: @"1";
             
             globalTF.tag = 100 + i; // Assign unique tags for keyboard handling
             globalTF.translatesAutoresizingMaskIntoConstraints = NO;
@@ -103,9 +114,13 @@ static id<MTLCommandQueue> mtl_queue;
             localTF.borderStyle = UITextBorderStyleRoundedRect;
             localTF.delegate = self;
 
-            // Construct dynamic key for local size
+            // Set local size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
-            localTF.text = [defaults stringForKey:localKey] ?: @"1"; // Load per-kernel value
+            NSString *localText = [defaults stringForKey:localKey];
+            if (!localText && tinygradDims && i < 3 && [tinygradDims[i + 3] intValue] > 0) {
+                localText = [tinygradDims[i + 3] stringValue]; // Use tinygrad local size (indices 3, 4, 5)
+            }
+            localTF.text = localText ?: @"1";
             
             localTF.tag = 200 + i; // Assign unique tags for keyboard handling
             localTF.translatesAutoresizingMaskIntoConstraints = NO;
@@ -156,7 +171,6 @@ static id<MTLCommandQueue> mtl_queue;
             [self.textView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
             [self.textView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [self.textView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
-            // Set a higher minimum height for the text view, which will act as a lower bound for dynamic height
             [self.textView.heightAnchor constraintGreaterThanOrEqualToConstant:250],
 
             // Global Size
@@ -191,7 +205,7 @@ static id<MTLCommandQueue> mtl_queue;
             [self.localSizeTextFields[2].leadingAnchor constraintEqualToAnchor:self.localSizeTextFields[1].trailingAnchor constant:padding],
             [self.localSizeTextFields[2].widthAnchor constraintEqualToConstant:70],
 
-            // Run Button (now relative to localSizeTextFields)
+            // Run Button
             [runButton.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding * 2],
             [runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
             [runButton.heightAnchor constraintEqualToConstant:44],
@@ -200,7 +214,7 @@ static id<MTLCommandQueue> mtl_queue;
             [self.resultLabel.topAnchor constraintEqualToAnchor:runButton.bottomAnchor constant:padding],
             [self.resultLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [self.resultLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
-            [self.resultLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-padding], // Pin to bottom of contentView
+            [self.resultLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-padding],
         ]];
 
         // Navigation items
@@ -223,8 +237,8 @@ static id<MTLCommandQueue> mtl_queue;
                                                    object:self.textView];
 
         // Force layout and update text view height for initial content
-        [self.view layoutIfNeeded]; // Ensure textView has a valid frame
-        [self updateTextViewHeight]; // Update height based on initial content
+        [self.view layoutIfNeeded];
+        [self updateTextViewHeight];
     }
     return self;
 }
