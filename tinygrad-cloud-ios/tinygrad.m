@@ -41,8 +41,6 @@ static NSMutableDictionary<NSString *, id> *kernel_times = nil;
     return saved_kernels[key];
 }
 + (NSArray *)getDimsForKey:(NSString *)key {
-    NSArray *ret = kernel_dims[key];
-    NSLog(@"rory ret =%@",ret);
     return kernel_dims[key];
 }
 
