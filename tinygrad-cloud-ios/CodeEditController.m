@@ -536,36 +536,16 @@ static id<MTLCommandQueue> mtl_queue;
     for (int i = 0; i < self.inputTextFields.count; i++) {
         UITextField *inputTF = self.inputTextFields[i];
         NSInteger byteSize = [inputTF.text integerValue];
-
-        if (byteSize <= 0) {
-            self.resultLabel.textColor = [UIColor systemOrangeColor];
-            self.resultLabel.text = [NSString stringWithFormat:@"Input %d byte size must be greater than 0.", i + 1];
-            // Clean up any buffers already created
-            for (id<MTLBuffer> buf in buffers) {
-                // In a real app, you might want to reset buffer content or handle it differently.
-                // For simplicity here, we're just letting them deallocate.
-            }
-            return;
-        }
-
         id<MTLBuffer> buffer = [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
-        // Initialize buffer with some data if needed, e.g., zeros
         memset(buffer.contents, 0, byteSize);
-        // You might want to initialize the first float to a known value for testing
-        if (byteSize >= sizeof(float)) {
-             ((float*)buffer.contents)[0] = 1.0f; // Example: Set first float to 1.0
-        }
-        
         [computeEncoder setBuffer:buffer offset:0 atIndex:i];
         [buffers addObject:buffer];
     }
     
-    // Dispatch threadgroups
     [computeEncoder dispatchThreadgroups:globalSize threadsPerThreadgroup:localSize];
     [computeEncoder endEncoding];
     [commandBuffer commit];
 
-    // Wait for completion and get result (from the first buffer, if available)
     [commandBuffer waitUntilCompleted];
     float gpuTimeMs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1000.0);
     dispatch_async(dispatch_get_main_queue(), ^{
