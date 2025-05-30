@@ -717,7 +717,26 @@ static id<MTLCommandQueue> mtl_queue;
         });
         return;
     }
+    
+    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"];
 
+    for (int i = 0; i < 3; i++) {
+        NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
+        NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
+        [[NSUserDefaults standardUserDefaults] setObject:self.globalSizeTextFields[i].text forKey:globalKey];
+        [[NSUserDefaults standardUserDefaults] setObject:self.localSizeTextFields[i].text forKey:localKey];
+    }
+
+    for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
+        NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
+        [[NSUserDefaults standardUserDefaults] setObject:self.bufferSizeTextFields[i].text forKey:bufferKey];
+    }
+
+    for (NSUInteger i = 0; i < self.intArgTextFields.count; i++) {
+        NSString *intArgKey = [NSString stringWithFormat:@"%@_intArg_%lu", self.originalTitle, (unsigned long)i];
+        [[NSUserDefaults standardUserDefaults] setObject:self.intArgTextFields[i].text forKey:intArgKey];
+    }
+    
     float gpuTimeNs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1e9);
     self.lastExecutionTime = @(gpuTimeNs);
     NSString *timeKey = [NSString stringWithFormat:@"%@_lastExecutionTime", self.originalTitle];
