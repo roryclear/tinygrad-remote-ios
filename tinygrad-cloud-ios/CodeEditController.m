@@ -9,6 +9,7 @@ static id<MTLCommandQueue> mtl_queue;
 @property (nonatomic, strong) NSString *originalTitle;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *localSizeTextFields;
+@property (nonatomic, strong) NSMutableArray<UITextField *> *bufferSizeTextFields;
 @property (nonatomic, strong) UILabel *resultLabel;
 @property (nonatomic, strong) NSNumber *lastExecutionTime; // in microseconds
 
@@ -63,6 +64,7 @@ static id<MTLCommandQueue> mtl_queue;
         // Global and Local Size Labels and TextFields
         self.globalSizeTextFields = [NSMutableArray array];
         self.localSizeTextFields = [NSMutableArray array];
+        self.bufferSizeTextFields = [NSMutableArray array];
 
         UILabel *globalLabel = [[UILabel alloc] init];
         globalLabel.text = @"Global Size (X, Y, Z):";
@@ -128,6 +130,36 @@ static id<MTLCommandQueue> mtl_queue;
             [self.localSizeTextFields addObject:localTF];
         }
 
+        // Buffer Size Label and TextFields
+        UILabel *bufferLabel = [[UILabel alloc] init];
+        bufferLabel.text = @"Buffer Sizes (bytes):";
+        bufferLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
+        bufferLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:bufferLabel];
+
+        // Infer the number of 'device' and 'constant' inputs from the kernel code
+        NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
+        NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
+        NSUInteger totalBuffers = deviceCount + constantCount;
+
+        for (NSUInteger i = 0; i < totalBuffers; i++) {
+            UITextField *bufferTF = [[UITextField alloc] init];
+            bufferTF.placeholder = [NSString stringWithFormat:@"Buffer %lu", (unsigned long)(i + 1)];
+            bufferTF.keyboardType = UIKeyboardTypeNumberPad;
+            bufferTF.borderStyle = UITextBorderStyleRoundedRect;
+            bufferTF.delegate = self;
+
+            // Load saved buffer size or use default "8"
+            NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
+            NSString *bufferText = [defaults stringForKey:bufferKey];
+            bufferTF.text = bufferText ?: @"8";
+
+            bufferTF.tag = 300 + i; // Assign unique tags for keyboard handling
+            bufferTF.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.contentView addSubview:bufferTF];
+            [self.bufferSizeTextFields addObject:bufferTF];
+        }
+
         // Run Button
         UIButton *runButton = [UIButton buttonWithType:UIButtonTypeSystem];
         [runButton setTitle:@"Run Kernel" forState:UIControlStateNormal];
@@ -167,7 +199,8 @@ static id<MTLCommandQueue> mtl_queue;
         [self.textViewDynamicHeightConstraint setActive:YES];
 
         // Constraints for elements within contentView
-        [NSLayoutConstraint activateConstraints:@[
+        NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray array];
+        [constraints addObjectsFromArray:@[
             [self.textView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
             [self.textView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [self.textView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
@@ -205,8 +238,26 @@ static id<MTLCommandQueue> mtl_queue;
             [self.localSizeTextFields[2].leadingAnchor constraintEqualToAnchor:self.localSizeTextFields[1].trailingAnchor constant:padding],
             [self.localSizeTextFields[2].widthAnchor constraintEqualToConstant:70],
 
-            // Run Button
-            [runButton.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding * 2],
+            // Buffer Size
+            [bufferLabel.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding],
+            [bufferLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+        ]];
+
+        // Dynamic constraints for buffer size text fields
+        NSLayoutAnchor *lastAnchor = bufferLabel.bottomAnchor;
+        for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
+            UITextField *bufferTF = self.bufferSizeTextFields[i];
+            [constraints addObjectsFromArray:@[
+                [bufferTF.topAnchor constraintEqualToAnchor:lastAnchor constant:padding/2],
+                [bufferTF.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+                [bufferTF.widthAnchor constraintEqualToConstant:100],
+            ]];
+            lastAnchor = bufferTF.bottomAnchor;
+        }
+
+        // Run Button and Result Label
+        [constraints addObjectsFromArray:@[
+            [runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
             [runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
             [runButton.heightAnchor constraintEqualToConstant:44],
 
@@ -216,6 +267,8 @@ static id<MTLCommandQueue> mtl_queue;
             [self.resultLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
             [self.resultLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-padding],
         ]];
+
+        [NSLayoutConstraint activateConstraints:constraints];
 
         // Navigation items
         self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave
@@ -293,9 +346,9 @@ static id<MTLCommandQueue> mtl_queue;
         self.onSave(self.textView.text);
     }
 
-    // Save the global and local sizes to NSUserDefaults for this specific kernel
+    // Save the global, local, and buffer sizes to NSUserDefaults for this specific kernel
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for dynamic keys
+    NSArray<NSString *> *suffixKeys = @[@"_X", @"_Y", @"_Z"]; // Suffixes for global and local sizes
 
     for (int i = 0; i < 3; i++) {
         NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
@@ -303,6 +356,12 @@ static id<MTLCommandQueue> mtl_queue;
         
         [defaults setObject:self.globalSizeTextFields[i].text forKey:globalKey];
         [defaults setObject:self.localSizeTextFields[i].text forKey:localKey];
+    }
+
+    // Save buffer sizes
+    for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
+        NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
+        [defaults setObject:self.bufferSizeTextFields[i].text forKey:bufferKey];
     }
 
     [defaults synchronize]; // Ensure immediate saving
@@ -372,7 +431,11 @@ static id<MTLCommandQueue> mtl_queue;
 
     NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray array];
     for (NSUInteger i = 0; i < totalBuffers; i++) {
-        NSInteger byteSize = 8; // Default size for all buffers
+        NSInteger byteSize = [self.bufferSizeTextFields[i].text integerValue];
+        if (byteSize <= 0) {
+            byteSize = 8; // Default to 8 bytes if invalid
+            self.bufferSizeTextFields[i].text = @"8"; // Update UI to reflect default
+        }
 
         id<MTLBuffer> buffer = [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
         if (!buffer) {
@@ -448,6 +511,15 @@ static id<MTLCommandQueue> mtl_queue;
                 }
             }
         }
+        // Check buffer size text fields
+        if (!activeInput) {
+            for (UITextField *textField in self.bufferSizeTextFields) {
+                if ([textField isFirstResponder]) {
+                    activeInput = textField;
+                    break;
+                }
+            }
+        }
     }
 
     if (activeInput) {
@@ -476,6 +548,9 @@ static id<MTLCommandQueue> mtl_queue;
         textField.inputAccessoryView = toolbar;
     }
     for (UITextField *textField in self.localSizeTextFields) {
+        textField.inputAccessoryView = toolbar;
+    }
+    for (UITextField *textField in self.bufferSizeTextFields) {
         textField.inputAccessoryView = toolbar;
     }
 }
