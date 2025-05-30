@@ -10,16 +10,19 @@ static id<MTLCommandQueue> mtl_queue;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *globalSizeTextFields;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *localSizeTextFields;
 @property (nonatomic, strong) NSMutableArray<UITextField *> *bufferSizeTextFields;
-@property (nonatomic, strong) NSMutableArray<UITextField *> *intArgTextFields; // New property for integer arguments
+@property (nonatomic, strong) NSMutableArray<UIButton *> *bufferViewButtons; // New property for buffer view buttons
+@property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *buffers; // New property to store buffers
+@property (nonatomic, strong) NSMutableArray<UITextField *> *intArgTextFields;
 @property (nonatomic, strong) UILabel *resultLabel;
 @property (nonatomic, strong) NSNumber *lastExecutionTime; // in microseconds
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
 @property (nonatomic, strong) UILabel *bufferLabel;
-@property (nonatomic, strong) UILabel *intArgLabel; // New property for integer arguments label
+@property (nonatomic, strong) UILabel *intArgLabel;
 @property (nonatomic, strong) UIButton *runButton;
 @property (nonatomic, strong) NSLayoutConstraint *textViewDynamicHeightConstraint;
 - (void)runTapped;
+- (void)viewBufferContents:(UIButton *)sender; // New action for viewing buffer contents
 @end
 
 @implementation CodeEditController
@@ -59,7 +62,9 @@ static id<MTLCommandQueue> mtl_queue;
         self.globalSizeTextFields = [NSMutableArray array];
         self.localSizeTextFields = [NSMutableArray array];
         self.bufferSizeTextFields = [NSMutableArray array];
-        self.intArgTextFields = [NSMutableArray array]; // Initialize new array
+        self.bufferViewButtons = [NSMutableArray array]; // Initialize new array
+        self.buffers = [NSMutableArray array]; // Initialize buffers array
+        self.intArgTextFields = [NSMutableArray array];
 
         UILabel *globalLabel = [[UILabel alloc] init];
         globalLabel.text = @"Global Size (X, Y, Z):";
@@ -79,7 +84,7 @@ static id<MTLCommandQueue> mtl_queue;
         self.bufferLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:self.bufferLabel];
 
-        self.intArgLabel = [[UILabel alloc] init]; // Initialize integer arguments label
+        self.intArgLabel = [[UILabel alloc] init];
         self.intArgLabel.text = @"Integer Arguments:";
         self.intArgLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleCaption1];
         self.intArgLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -153,9 +158,17 @@ static id<MTLCommandQueue> mtl_queue;
             bufferTF.translatesAutoresizingMaskIntoConstraints = NO;
             [self.contentView addSubview:bufferTF];
             [self.bufferSizeTextFields addObject:bufferTF];
+
+            UIButton *viewButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            [viewButton setTitle:@"View" forState:UIControlStateNormal];
+            viewButton.titleLabel.font = [UIFont systemFontOfSize:12];
+            viewButton.tag = 500 + i; // Unique tag
+            [viewButton addTarget:self action:@selector(viewBufferContents:) forControlEvents:UIControlEventTouchUpInside];
+            viewButton.translatesAutoresizingMaskIntoConstraints = NO;
+            [self.contentView addSubview:viewButton];
+            [self.bufferViewButtons addObject:viewButton];
         }
-        
-        // Initialize Integer Argument Text Fields
+
         [self setupIntArgTextFieldsWithCode:code defaults:defaults];
 
         self.runButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -235,20 +248,24 @@ static id<MTLCommandQueue> mtl_queue;
         NSLayoutAnchor *lastAnchor = self.bufferLabel.bottomAnchor;
         for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
             UITextField *bufferTF = self.bufferSizeTextFields[i];
+            UIButton *viewButton = self.bufferViewButtons[i];
             [constraints addObjectsFromArray:@[
                 [bufferTF.topAnchor constraintEqualToAnchor:lastAnchor constant:padding/2],
                 [bufferTF.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
                 [bufferTF.widthAnchor constraintEqualToConstant:100],
+
+                [viewButton.centerYAnchor constraintEqualToAnchor:bufferTF.centerYAnchor],
+                [viewButton.leadingAnchor constraintEqualToAnchor:bufferTF.trailingAnchor constant:padding/2],
+                [viewButton.widthAnchor constraintEqualToConstant:50],
+                [viewButton.heightAnchor constraintEqualToConstant:30]
             ]];
             lastAnchor = bufferTF.bottomAnchor;
         }
-        
-        // Add constraints for integer arguments label
+
         [constraints addObject:[self.intArgLabel.topAnchor constraintEqualToAnchor:lastAnchor constant:padding]];
         [constraints addObject:[self.intArgLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding]];
         lastAnchor = self.intArgLabel.bottomAnchor;
 
-        // Add constraints for integer argument text fields
         for (NSUInteger i = 0; i < self.intArgTextFields.count; i++) {
             UITextField *intArgTF = self.intArgTextFields[i];
             [constraints addObjectsFromArray:@[
@@ -258,7 +275,6 @@ static id<MTLCommandQueue> mtl_queue;
             ]];
             lastAnchor = intArgTF.bottomAnchor;
         }
-
 
         [constraints addObjectsFromArray:@[
             [self.runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
@@ -332,7 +348,6 @@ static id<MTLCommandQueue> mtl_queue;
 #pragma mark - Integer Argument Setup
 
 - (void)setupIntArgTextFieldsWithCode:(NSString *)code defaults:(NSUserDefaults *)defaults {
-    // Remove existing integer argument text fields
     for (UITextField *intArgTF in self.intArgTextFields) {
         [intArgTF removeFromSuperview];
     }
@@ -343,9 +358,6 @@ static id<MTLCommandQueue> mtl_queue;
     if (intArgValues && [intArgValues isKindOfClass:[NSArray class]] && intArgValues.count > 0) {
         totalIntArgs = intArgValues.count;
     } else {
-        // Infer from kernel code: look for "int" parameters in the kernel function signature
-        // This is a basic inference and might need to be more robust for complex cases.
-        // Example: kernel void my_kernel(device float *buffer1, constant int arg1, int arg2)
         NSString *safeKernelName = [[self.originalTitle componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
         NSString *pattern = [NSString stringWithFormat:@"kernel void %@\\([^)]*\\)", [NSRegularExpression escapedPatternForString:safeKernelName]];
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
@@ -355,12 +367,9 @@ static id<MTLCommandQueue> mtl_queue;
             NSRange signatureRange = [match rangeAtIndex:0];
             NSString *signature = [code substringWithRange:signatureRange];
             
-            // Regex to find 'int ' followed by a variable name (simple approach)
             NSRegularExpression *intArgRegex = [NSRegularExpression regularExpressionWithPattern:@"\\bint\\s+\\w+" options:0 error:nil];
             totalIntArgs = [intArgRegex numberOfMatchesInString:signature options:0 range:NSMakeRange(0, signature.length)];
             
-            // Subtract constant int occurrences as they are already handled by constant buffers if tinygrad interprets them that way
-            // This part might need refinement based on tinygrad's exact behavior
             NSUInteger constantIntCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\s+int\\s+\\w+" options:0 error:nil] numberOfMatchesInString:signature options:0 range:NSMakeRange(0, signature.length)];
             totalIntArgs -= constantIntCount;
         }
@@ -377,14 +386,13 @@ static id<MTLCommandQueue> mtl_queue;
         if (!intArgText && intArgValues && i < intArgValues.count) {
             intArgText = [intArgValues[i] stringValue];
         }
-        intArgTF.text = intArgText ?: @"0"; // Default to 0
-        intArgTF.tag = 400 + i; // Unique tag
+        intArgTF.text = intArgText ?: @"0";
+        intArgTF.tag = 400 + i;
         intArgTF.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:intArgTF];
         [self.intArgTextFields addObject:intArgTF];
     }
 }
-
 
 #pragma mark - Actions
 
@@ -409,8 +417,7 @@ static id<MTLCommandQueue> mtl_queue;
         NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
         [defaults setObject:self.bufferSizeTextFields[i].text forKey:bufferKey];
     }
-    
-    // Save integer argument values
+
     for (NSUInteger i = 0; i < self.intArgTextFields.count; i++) {
         NSString *intArgKey = [NSString stringWithFormat:@"%@_intArg_%lu", self.originalTitle, (unsigned long)i];
         [defaults setObject:self.intArgTextFields[i].text forKey:intArgKey];
@@ -419,12 +426,38 @@ static id<MTLCommandQueue> mtl_queue;
     [defaults synchronize];
 }
 
+- (void)viewBufferContents:(UIButton *)sender {
+    NSUInteger index = sender.tag - 500; // Corresponds to buffer index
+    if (index >= self.buffers.count || !self.buffers[index]) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
+                                                                       message:@"Buffer not available. Run the kernel first."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+
+    id<MTLBuffer> buffer = self.buffers[index];
+    NSUInteger length = buffer.length;
+    unsigned char *contents = (unsigned char *)buffer.contents;
+    NSMutableString *hexString = [NSMutableString stringWithCapacity:length * 2];
+    for (NSUInteger i = 0; i < length; i++) {
+        [hexString appendFormat:@"%02x", contents[i]];
+        if (i < length - 1) [hexString appendString:@" "];
+    }
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"Buffer %lu Contents", (unsigned long)(index + 1)]
+                                                                   message:hexString.length > 0 ? hexString : @"Empty buffer"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 - (void)runTapped {
     [self.view endEditing:YES];
 
     NSString *kernelCode = self.textView.text;
 
-    // Determine number of buffers
     NSUInteger totalBuffers = 0;
     NSArray<NSNumber *> *bufferSizes = kernel_buffer_sizes[_originalTitle];
     if (bufferSizes && [bufferSizes isKindOfClass:[NSArray class]] && bufferSizes.count > 0) {
@@ -434,8 +467,7 @@ static id<MTLCommandQueue> mtl_queue;
         NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
         totalBuffers = deviceCount + constantCount;
     }
-    
-    // Determine number of integer arguments
+
     NSUInteger totalIntArgs = 0;
     NSArray<NSNumber *> *intArgValues = kernel_buffer_ints[_originalTitle];
     if (intArgValues && [intArgValues isKindOfClass:[NSArray class]] && intArgValues.count > 0) {
@@ -456,21 +488,24 @@ static id<MTLCommandQueue> mtl_queue;
         }
     }
 
-
-    // --- Dynamic UI Recreation (Buffers and Int Args) ---
-    // Remove all existing buffer and int arg text fields, and their constraints
+    // Remove existing buffer and int arg text fields, and their buttons
     for (UITextField *textField in self.bufferSizeTextFields) { [textField removeFromSuperview]; }
     [self.bufferSizeTextFields removeAllObjects];
+    for (UIButton *button in self.bufferViewButtons) { [button removeFromSuperview]; }
+    [self.bufferViewButtons removeAllObjects];
+    [self.buffers removeAllObjects];
     for (UITextField *textField in self.intArgTextFields) { [textField removeFromSuperview]; }
     [self.intArgTextFields removeAllObjects];
 
-    // Deactivate old constraints related to dynamic elements (buffer/int arg text fields, run button, result label)
-    // This is crucial to avoid conflicts before adding new ones
+    // Deactivate old constraints
     for (NSLayoutConstraint *constraint in self.contentView.constraints) {
         BOOL isDynamicConstraint = NO;
         if (constraint.firstItem == self.bufferLabel || constraint.secondItem == self.bufferLabel) isDynamicConstraint = YES;
         for (UITextField *tf in self.bufferSizeTextFields) {
             if (constraint.firstItem == tf || constraint.secondItem == tf) isDynamicConstraint = YES;
+        }
+        for (UIButton *btn in self.bufferViewButtons) {
+            if (constraint.firstItem == btn || constraint.secondItem == btn) isDynamicConstraint = YES;
         }
         if (constraint.firstItem == self.intArgLabel || constraint.secondItem == self.intArgLabel) isDynamicConstraint = YES;
         for (UITextField *tf in self.intArgTextFields) {
@@ -484,10 +519,10 @@ static id<MTLCommandQueue> mtl_queue;
         }
     }
 
-    // Recreate buffer text fields
+    // Recreate buffer text fields and view buttons
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    CGFloat padding = 10.0; // Define padding locally for clarity
-    
+    CGFloat padding = 10.0;
+
     for (NSUInteger i = 0; i < totalBuffers; i++) {
         UITextField *bufferTF = [[UITextField alloc] init];
         bufferTF.placeholder = [NSString stringWithFormat:@"Buffer %lu", (unsigned long)(i + 1)];
@@ -504,8 +539,17 @@ static id<MTLCommandQueue> mtl_queue;
         bufferTF.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:bufferTF];
         [self.bufferSizeTextFields addObject:bufferTF];
+
+        UIButton *viewButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        [viewButton setTitle:@"View" forState:UIControlStateNormal];
+        viewButton.titleLabel.font = [UIFont systemFontOfSize:12];
+        viewButton.tag = 500 + i;
+        [viewButton addTarget:self action:@selector(viewBufferContents:) forControlEvents:UIControlEventTouchUpInside];
+        viewButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:viewButton];
+        [self.bufferViewButtons addObject:viewButton];
     }
-    
+
     // Recreate integer argument text fields
     for (NSUInteger i = 0; i < totalIntArgs; i++) {
         UITextField *intArgTF = [[UITextField alloc] init];
@@ -525,31 +569,33 @@ static id<MTLCommandQueue> mtl_queue;
         [self.intArgTextFields addObject:intArgTF];
     }
 
-    // Re-add and activate all dynamic constraints
+    // Re-add and activate constraints
     NSMutableArray<NSLayoutConstraint *> *newConstraints = [NSMutableArray array];
-    
-    // Buffer Label constraint
+
     [newConstraints addObject:[self.bufferLabel.topAnchor constraintEqualToAnchor:self.localSizeTextFields[0].bottomAnchor constant:padding]];
     [newConstraints addObject:[self.bufferLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding]];
 
     NSLayoutAnchor *lastAnchor = self.bufferLabel.bottomAnchor;
-    // Buffer text fields constraints
     for (NSUInteger i = 0; i < self.bufferSizeTextFields.count; i++) {
         UITextField *bufferTF = self.bufferSizeTextFields[i];
+        UIButton *viewButton = self.bufferViewButtons[i];
         [newConstraints addObjectsFromArray:@[
             [bufferTF.topAnchor constraintEqualToAnchor:lastAnchor constant:padding/2],
             [bufferTF.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
             [bufferTF.widthAnchor constraintEqualToConstant:100],
+
+            [viewButton.centerYAnchor constraintEqualToAnchor:bufferTF.centerYAnchor],
+            [viewButton.leadingAnchor constraintEqualToAnchor:bufferTF.trailingAnchor constant:padding/2],
+            [viewButton.widthAnchor constraintEqualToConstant:50],
+            [viewButton.heightAnchor constraintEqualToConstant:30]
         ]];
         lastAnchor = bufferTF.bottomAnchor;
     }
-    
-    // Integer Argument Label constraint
+
     [newConstraints addObject:[self.intArgLabel.topAnchor constraintEqualToAnchor:lastAnchor constant:padding]];
     [newConstraints addObject:[self.intArgLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding]];
     lastAnchor = self.intArgLabel.bottomAnchor;
 
-    // Integer Argument text fields constraints
     for (NSUInteger i = 0; i < self.intArgTextFields.count; i++) {
         UITextField *intArgTF = self.intArgTextFields[i];
         [newConstraints addObjectsFromArray:@[
@@ -560,7 +606,6 @@ static id<MTLCommandQueue> mtl_queue;
         lastAnchor = intArgTF.bottomAnchor;
     }
 
-    // Run Button and Result Label constraints
     [newConstraints addObjectsFromArray:@[
         [self.runButton.topAnchor constraintEqualToAnchor:lastAnchor constant:padding * 2],
         [self.runButton.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
@@ -574,10 +619,9 @@ static id<MTLCommandQueue> mtl_queue;
 
     [NSLayoutConstraint activateConstraints:newConstraints];
 
-    // Force layout update
     [self.view layoutIfNeeded];
 
-    // --- Metal Kernel Execution Logic ---
+    // Metal Kernel Execution
     NSError *error = nil;
     id<MTLLibrary> library = [device newLibraryWithSource:kernelCode options:nil error:&error];
     if (!library) {
@@ -628,7 +672,7 @@ static id<MTLCommandQueue> mtl_queue;
     id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
     [computeEncoder setComputePipelineState:pipelineState];
 
-    NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray array];
+    [self.buffers removeAllObjects]; // Clear previous buffers
     for (NSUInteger i = 0; i < totalBuffers; i++) {
         NSInteger byteSize = [self.bufferSizeTextFields[i].text integerValue];
         if (byteSize <= 0) {
@@ -645,13 +689,11 @@ static id<MTLCommandQueue> mtl_queue;
 
         memset(buffer.contents, 0, byteSize);
         [computeEncoder setBuffer:buffer offset:0 atIndex:i];
-        [buffers addObject:buffer];
+        [self.buffers addObject:buffer]; // Store buffer
     }
-    
-    // Set integer arguments
+
     for (NSUInteger i = 0; i < self.intArgTextFields.count; i++) {
         NSInteger value = [self.intArgTextFields[i].text integerValue];
-        // The index for integer arguments starts *after* all buffers
         [computeEncoder setBytes:&value length:sizeof(NSInteger) atIndex:i + totalBuffers];
     }
 
@@ -721,7 +763,7 @@ static id<MTLCommandQueue> mtl_queue;
                 }
             }
         }
-        if (!activeInput) { // Check new integer argument text fields
+        if (!activeInput) {
             for (UITextField *textField in self.intArgTextFields) {
                 if ([textField isFirstResponder]) {
                     activeInput = textField;
@@ -758,7 +800,7 @@ static id<MTLCommandQueue> mtl_queue;
     for (UITextField *textField in self.bufferSizeTextFields) {
         textField.inputAccessoryView = toolbar;
     }
-    for (UITextField *textField in self.intArgTextFields) { // Set inputAccessoryView for new text fields
+    for (UITextField *textField in self.intArgTextFields) {
         textField.inputAccessoryView = toolbar;
     }
 }

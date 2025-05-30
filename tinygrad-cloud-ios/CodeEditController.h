@@ -18,6 +18,7 @@
 @property (nonatomic, strong) UITextView *textView;
 @property (nonatomic, copy) void (^onSave)(NSString *code);
 @property (nonatomic, weak) id<CodeEditControllerDelegate> delegate;
+@property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *lastRunBuffers;
 
 - (instancetype)initWithCode:(NSString *)code title:(NSString *)title;
 
