@@ -11,7 +11,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-remote-host" folder in "tinygrad-remote-host" target */ = {
+		BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-host" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -21,12 +21,12 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		BE83FC342CFFB4FD00D60BBA /* tinygrad-remote-host */ = {
+		BE83FC342CFFB4FD00D60BBA /* tinygrad-cloud-ios */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-remote-host" folder in "tinygrad-remote-host" target */,
+				BE83FC492CFFB4FE00D60BBA /* Exceptions for "tinygrad-cloud-ios" folder in "tinygrad-remote-host" target */,
 			);
-			path = "tinygrad-remote-host";
+			path = "tinygrad-cloud-ios";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -45,7 +45,7 @@
 		BE83FC292CFFB4FD00D60BBA = {
 			isa = PBXGroup;
 			children = (
-				BE83FC342CFFB4FD00D60BBA /* tinygrad-remote-host */,
+				BE83FC342CFFB4FD00D60BBA /* tinygrad-cloud-ios */,
 				BE83FC332CFFB4FD00D60BBA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -74,7 +74,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				BE83FC342CFFB4FD00D60BBA /* tinygrad-remote-host */,
+				BE83FC342CFFB4FD00D60BBA /* tinygrad-cloud-ios */,
 			);
 			name = "tinygrad-remote-host";
 			packageProductDependencies = (
