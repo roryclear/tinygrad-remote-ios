@@ -474,10 +474,8 @@ static id<MTLCommandQueue> mtl_queue;
 - (void)runTapped {
     [self.view endEditing:YES]; // Dismiss keyboard
 
-    // Get the kernel code from the text view
     NSString *kernelCode = self.textView.text;
 
-    // Compile the Metal library
     NSError *error = nil;
     id<MTLLibrary> library = [device newLibraryWithSource:kernelCode options:nil error:&error];
     if (!library) {
@@ -486,10 +484,8 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    // Derive the Metal function name from originalTitle by replacing non-alphanumeric chars with underscores
     NSString *safeKernelName = [[self.originalTitle componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
 
-    // Get the kernel function
     id<MTLFunction> kernelFunction = [library newFunctionWithName:safeKernelName];
     if (!kernelFunction) {
         self.resultLabel.textColor = [UIColor systemRedColor];
@@ -497,7 +493,6 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    // Create the compute pipeline state
     id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:kernelFunction error:&error];
     if (!pipelineState) {
         self.resultLabel.textColor = [UIColor systemRedColor];
@@ -505,16 +500,14 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    // Get global and local sizes from text fields
     MTLSize globalSize = MTLSizeMake([self.globalSizeTextFields[0].text integerValue],
                                      [self.globalSizeTextFields[1].text integerValue],
                                      [self.globalSizeTextFields[2].text integerValue]);
-    
+
     MTLSize localSize = MTLSizeMake([self.localSizeTextFields[0].text integerValue],
                                     [self.localSizeTextFields[1].text integerValue],
                                     [self.localSizeTextFields[2].text integerValue]);
 
-    // Validate sizes (optional but good practice)
     if (globalSize.width == 0 || globalSize.height == 0 || globalSize.depth == 0 ||
         localSize.width == 0 || localSize.height == 0 || localSize.depth == 0) {
         self.resultLabel.textColor = [UIColor systemOrangeColor];
@@ -522,33 +515,65 @@ static id<MTLCommandQueue> mtl_queue;
         return;
     }
 
-    // Create command buffer and encoder
+    NSUInteger totalThreads = localSize.width * localSize.height * localSize.depth;
+    if (totalThreads > pipelineState.maxTotalThreadsPerThreadgroup) {
+        self.resultLabel.textColor = [UIColor systemRedColor];
+        self.resultLabel.text = [NSString stringWithFormat:@"Total local threads (%lu) exceed maximum supported (%lu).",
+                                 (unsigned long)totalThreads, (unsigned long)pipelineState.maxTotalThreadsPerThreadgroup];
+        return;
+    }
+
+    // Infer the number of 'device' and 'constant' inputs from the kernel code
+    NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
+    NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:kernelCode options:0 range:NSMakeRange(0, kernelCode.length)];
+    
+    NSUInteger totalBuffers = deviceCount + constantCount;
+
     id<MTLCommandBuffer> commandBuffer = [mtl_queue commandBuffer];
     id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
     [computeEncoder setComputePipelineState:pipelineState];
 
-    // Create and set buffers for kernel inputs
     NSMutableArray<id<MTLBuffer>> *buffers = [NSMutableArray array];
-    for (int i = 0; i < self.inputTextFields.count; i++) {
-        UITextField *inputTF = self.inputTextFields[i];
-        NSInteger byteSize = [inputTF.text integerValue];
+    for (NSUInteger i = 0; i < totalBuffers; i++) {
+        NSInteger byteSize = 1024; // Default size
+        if (i < self.inputTextFields.count) {
+            NSInteger userSize = [self.inputTextFields[i].text integerValue];
+            if (userSize > 0) byteSize = userSize;
+        }
+
         id<MTLBuffer> buffer = [device newBufferWithLength:byteSize options:MTLResourceStorageModeShared];
+        if (!buffer) {
+            self.resultLabel.textColor = [UIColor systemRedColor];
+            self.resultLabel.text = [NSString stringWithFormat:@"Failed to create buffer of size %ld for index %lu.", (long)byteSize, (unsigned long)i];
+            return;
+        }
+
         memset(buffer.contents, 0, byteSize);
         [computeEncoder setBuffer:buffer offset:0 atIndex:i];
         [buffers addObject:buffer];
     }
-    
-    [computeEncoder dispatchThreadgroups:globalSize threadsPerThreadgroup:localSize];
-    [computeEncoder endEncoding];
-    [commandBuffer commit];
 
-    [commandBuffer waitUntilCompleted];
+    // Encode and commit
+    @try {
+        [computeEncoder dispatchThreadgroups:globalSize threadsPerThreadgroup:localSize];
+        [computeEncoder endEncoding];
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+    } @catch (NSException *exception) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.resultLabel.textColor = [UIColor systemRedColor];
+            self.resultLabel.text = @"Dispatch failed. Please check threadgroup sizes and buffer usage.";
+        });
+        return;
+    }
+
     float gpuTimeMs = (float)((commandBuffer.GPUEndTime - commandBuffer.GPUStartTime) * 1000.0);
     dispatch_async(dispatch_get_main_queue(), ^{
         self.resultLabel.textColor = [UIColor systemBlueColor];
         self.resultLabel.text = [NSString stringWithFormat:@"Kernel ran in %.3f ms", gpuTimeMs];
     });
 }
+
 
 #pragma mark - Keyboard Handling
 
