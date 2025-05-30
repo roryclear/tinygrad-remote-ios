@@ -140,16 +140,13 @@ static id<MTLCommandQueue> mtl_queue;
         addInputButton.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:addInputButton];
         
-        // Load existing inputs or add a default one
+        // Load existing inputs from NSUserDefaults (if any)
         NSString *inputSizesKey = [NSString stringWithFormat:@"%@_inputSizes", self.originalTitle];
         NSArray<NSString *> *savedInputSizes = [defaults arrayForKey:inputSizesKey];
         if (savedInputSizes.count > 0) {
             for (NSString *inputSizeText in savedInputSizes) {
                 [self addInputRowWithText:inputSizeText];
             }
-        } else {
-            // Add one default empty input field if none saved
-            [self addInputRowWithText:@""];
         }
 
         // Run Button
@@ -329,7 +326,7 @@ static id<MTLCommandQueue> mtl_queue;
 }
 
 - (void)addInputTapped {
-    [self addInputRowWithText:@""]; // Add a new empty input field
+    [self addInputRowWithText:@"8"]; // Add a new input field with default size of 8
 }
 
 - (void)removeInputTapped:(UIButton *)sender {
@@ -399,7 +396,6 @@ static id<MTLCommandQueue> mtl_queue;
         }
     }
 }
-
 
 #pragma mark - Layout & Lifecycle
 
