@@ -13,6 +13,7 @@ extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints;
 @interface tinygrad : NSObject
 + (NSString *)getIP;
 + (void)start;
++ (void)stop;
 + (void)toggleSaveKernels;
 @end
 

@@ -117,6 +117,7 @@
             [self updateIPLabel];
         }];
     } else {
+        [tinygrad stop];
         self.isRemoteEnabled = NO;
         [self.ipTimer invalidate];
         self.ipLabel.text = @"Turn on tinygrad remote";
@@ -190,14 +191,24 @@
         if (indexPath.row == 0) {
             [cell.contentView addSubview:self.ipLabel];
             self.ipLabel.frame = CGRectMake(15, 0, cell.contentView.bounds.size.width - 100, 44);
+
             UISwitch *toggle = self.remoteSwitch;
-            toggle.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
+            toggle.translatesAutoresizingMaskIntoConstraints = NO;
             [cell.contentView addSubview:toggle];
+            [NSLayoutConstraint activateConstraints:@[
+                [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
+                [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
+            ]];
         } else if (indexPath.row == 1) {
             cell.textLabel.text = @"Show tinygrad kernels";
+
             UISwitch *toggle = self.kernelsSwitch;
-            toggle.center = CGPointMake(cell.contentView.bounds.size.width - 60, cell.contentView.bounds.size.height / 2);
+            toggle.translatesAutoresizingMaskIntoConstraints = NO;
             [cell.contentView addSubview:toggle];
+            [NSLayoutConstraint activateConstraints:@[
+                [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
+                [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
+            ]];
         }
     }
     else if (indexPath.section == 1) {

@@ -19,15 +19,22 @@ NSMutableDictionary<NSString *, id> *kernel_times = nil;
 NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
+static tinygrad *sharedInstance = nil;
 
 @implementation tinygrad
 
+
 + (void)start {
-    static tinygrad *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        sharedInstance = [[self alloc] init];
-    });
+    if (!sharedInstance) sharedInstance = [[self alloc] init];
+}
+
++ (void)stop {
+    if (_socket) {
+        CFSocketInvalidate(_socket);
+        CFRelease(_socket);
+        _socket = NULL;
+    }
+    sharedInstance = nil;
 }
 + (void)toggleSaveKernels { save_kernels = !save_kernels;}
 
