@@ -99,7 +99,7 @@ static id<MTLCommandQueue> mtl_queue;
             // Set global size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *globalKey = [NSString stringWithFormat:@"%@_globalSize%@", self.originalTitle, suffixKeys[i]];
             NSString *globalText = [defaults stringForKey:globalKey];
-            if (!globalText && tinygradDims && i < 3 && [tinygradDims[i] intValue] > 0) {
+            if (!globalText && tinygradDims && i < tinygradDims.count && [tinygradDims[i] intValue] > 0) {
                 globalText = [tinygradDims[i] stringValue]; // Use tinygrad global size (indices 0, 1, 2)
             }
             globalTF.text = globalText ?: @"1";
@@ -119,7 +119,7 @@ static id<MTLCommandQueue> mtl_queue;
             // Set local size: prefer saved value, then tinygrad dimension, then default "1"
             NSString *localKey = [NSString stringWithFormat:@"%@_localSize%@", self.originalTitle, suffixKeys[i]];
             NSString *localText = [defaults stringForKey:localKey];
-            if (!localText && tinygradDims && i < 3 && [tinygradDims[i + 3] intValue] > 0) {
+            if (!localText && tinygradDims && i + 3 < tinygradDims.count && [tinygradDims[i + 3] intValue] > 0) {
                 localText = [tinygradDims[i + 3] stringValue]; // Use tinygrad local size (indices 3, 4, 5)
             }
             localTF.text = localText ?: @"1";
@@ -137,10 +137,17 @@ static id<MTLCommandQueue> mtl_queue;
         bufferLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:bufferLabel];
 
-        // Infer the number of 'device' and 'constant' inputs from the kernel code
-        NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
-        NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
-        NSUInteger totalBuffers = deviceCount + constantCount;
+        // Determine number of buffers: prefer kernel_buffer_sizes, then fall back to regex
+        NSUInteger totalBuffers = 0;
+        NSArray<NSNumber *> *bufferSizes = kernel_buffer_sizes[title];
+        if (bufferSizes && [bufferSizes isKindOfClass:[NSArray class]] && bufferSizes.count > 0) {
+            totalBuffers = bufferSizes.count;
+        } else {
+            // Fallback to counting 'device' and 'constant' keywords
+            NSUInteger deviceCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bdevice\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
+            NSUInteger constantCount = [[NSRegularExpression regularExpressionWithPattern:@"\\bconstant\\b" options:0 error:nil] numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)];
+            totalBuffers = deviceCount + constantCount;
+        }
 
         for (NSUInteger i = 0; i < totalBuffers; i++) {
             UITextField *bufferTF = [[UITextField alloc] init];
@@ -149,9 +156,12 @@ static id<MTLCommandQueue> mtl_queue;
             bufferTF.borderStyle = UITextBorderStyleRoundedRect;
             bufferTF.delegate = self;
 
-            // Load saved buffer size or use default "8"
+            // Load buffer size: prefer saved value, then kernel_buffer_sizes, then default "8"
             NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
             NSString *bufferText = [defaults stringForKey:bufferKey];
+            if (!bufferText && bufferSizes && i < bufferSizes.count && [bufferSizes[i] integerValue] > 0) {
+                bufferText = [bufferSizes[i] stringValue]; // Use size from kernel_buffer_sizes
+            }
             bufferTF.text = bufferText ?: @"8";
 
             bufferTF.tag = 300 + i; // Assign unique tags for keyboard handling

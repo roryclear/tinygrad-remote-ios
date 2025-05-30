@@ -16,6 +16,8 @@ NSMutableArray<NSString *> *kernel_keys = nil;
 NSMutableDictionary<NSString *, id> *saved_kernels = nil;
 NSMutableDictionary<NSString *, id> *kernel_dims = nil;
 NSMutableDictionary<NSString *, id> *kernel_times = nil;
+NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
+NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 
 @implementation tinygrad
 
@@ -40,6 +42,8 @@ NSMutableDictionary<NSString *, id> *kernel_times = nil;
         saved_kernels = [[NSMutableDictionary alloc] init];
         kernel_dims = [[NSMutableDictionary alloc] init];
         kernel_times = [[NSMutableDictionary alloc] init];
+        buffer_sizes = [[NSMutableDictionary alloc] init];
+        kernel_buffer_sizes = [[NSMutableDictionary alloc] init];
         
         _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
         while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
@@ -174,6 +178,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             return;
         } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
             [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
+            if (save_kernels) [buffer_sizes setObject:@([values[@"size"][0] intValue]) forKey:values[@"buffer_num"][0]];
         } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
             [buffers removeObjectForKey: values[@"buffer_num"][0]];
         } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
@@ -194,6 +199,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             if(save_kernels){
                 [kernel_keys addObject: values[@"name"][0]];
                 [saved_kernels setObject:prg forKey:values[@"name"][0]];
+                [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
             }
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithSource:prg options:nil error:&error];
@@ -216,10 +222,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
             [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
             for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
-                id<MTLBuffer> buffer = buffers[values[@"bufs"][i]];
-                if (buffer) {
-                    [encoder setBuffer:buffer offset:0 atIndex:i];
-                }
+                if(save_kernels && kernel_buffer_sizes[values[@"name"][0]].count == i) [kernel_buffer_sizes[values[@"name"][0]] addObject:buffer_sizes[values[@"bufs"][i]]];
+                [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
             }
             for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
                 NSInteger value = [values[@"vals"][i] integerValue];
