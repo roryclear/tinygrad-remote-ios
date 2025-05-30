@@ -458,6 +458,13 @@ static id<MTLCommandQueue> mtl_queue;
 
     NSString *kernelCode = self.textView.text;
 
+    // Save current buffer size text field values
+    NSMutableArray<NSString *> *currentBufferSizes = [NSMutableArray array];
+    for (UITextField *textField in self.bufferSizeTextFields) {
+        [currentBufferSizes addObject:textField.text ?: @""];
+    }
+
+    // Determine total buffers
     NSUInteger totalBuffers = 0;
     NSArray<NSNumber *> *bufferSizes = kernel_buffer_sizes[_originalTitle];
     if (bufferSizes && [bufferSizes isKindOfClass:[NSArray class]] && bufferSizes.count > 0) {
@@ -468,6 +475,7 @@ static id<MTLCommandQueue> mtl_queue;
         totalBuffers = deviceCount + constantCount;
     }
 
+    // Determine total integer arguments
     NSUInteger totalIntArgs = 0;
     NSArray<NSNumber *> *intArgValues = kernel_buffer_ints[_originalTitle];
     if (intArgValues && [intArgValues isKindOfClass:[NSArray class]] && intArgValues.count > 0) {
@@ -530,7 +538,7 @@ static id<MTLCommandQueue> mtl_queue;
         bufferTF.borderStyle = UITextBorderStyleRoundedRect;
         bufferTF.delegate = self;
         NSString *bufferKey = [NSString stringWithFormat:@"%@_bufferSize_%lu", self.originalTitle, (unsigned long)i];
-        NSString *bufferText = [defaults stringForKey:bufferKey];
+        NSString *bufferText = (i < currentBufferSizes.count && currentBufferSizes[i].length > 0) ? currentBufferSizes[i] : [defaults stringForKey:bufferKey];
         if (!bufferText && bufferSizes && i < bufferSizes.count && [bufferSizes[i] integerValue] > 0) {
             bufferText = [bufferSizes[i] stringValue];
         }
