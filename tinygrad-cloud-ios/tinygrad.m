@@ -218,14 +218,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             descriptor.supportIndirectCommandBuffers = YES;
             MTLComputePipelineReflection *reflection = nil;
             id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
-            if(error) {
-                sendHTTPResponse(handle, "inf", 3);
-                return;
-            }
-            [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
+            if(pipeline_state) [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
         } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
             [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
         } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
+            if (!pipeline_states[@[values[@"name"][0], values[@"datahash"][0]]]){
+                sendHTTPResponse(handle, "inf", 3);
+                return;
+            }
             NSArray *programKey = @[values[@"name"][0],values[@"datahash"][0]];
             NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
             if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
@@ -267,3 +267,4 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
 }
 
 @end
+
