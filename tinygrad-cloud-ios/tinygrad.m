@@ -257,6 +257,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 if([values[@"wait"][0] isEqualToString:@"True"]){
                     const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
                     sendHTTPResponse(handle, time_string, strlen(time_string));
+                    return;
                 }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
