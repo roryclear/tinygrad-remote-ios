@@ -218,6 +218,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             descriptor.supportIndirectCommandBuffers = YES;
             MTLComputePipelineReflection *reflection = nil;
             id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
+            if(error) {
+                sendHTTPResponse(handle, "inf", 3);
+                return;
+            }
             [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
         } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
             [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
@@ -251,14 +255,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
                 [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:values[@"name"][0]]; //ns
                 if([values[@"wait"][0] isEqualToString:@"True"]){
-                    const char *time_string = [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
                     sendHTTPResponse(handle, time_string, strlen(time_string));
                 }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
         }
     }
-    sendHTTPResponse(handle, (const char[]){0x00}, 1); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
+    sendHTTPResponse(handle, "inf", 3); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
 
 @end
