@@ -10,11 +10,12 @@
 
     self.isRemoteEnabled = NO;
     self.myKernels = [NSMutableDictionary dictionary];
-    self.myKernelNames = [NSMutableArray array]; // Initialize the new array
+    self.myKernelNames = [NSMutableArray array];
 
-    [self loadMyKernels]; // Load saved kernels
+    [self loadMyKernels];
 
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     [self.view addSubview:self.tableView];
@@ -178,39 +179,39 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *identifier = @"Cell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
-    }
-
-    [cell.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
-    cell.textLabel.text = @"";
-    cell.accessoryType = UITableViewCellAccessoryNone;
-
-    if (indexPath.section == 0) {
-        if (indexPath.row == 0) {
-            [cell.contentView addSubview:self.ipLabel];
-            self.ipLabel.frame = CGRectMake(15, 0, cell.contentView.bounds.size.width - 100, 44);
-
-            UISwitch *toggle = self.remoteSwitch;
-            toggle.translatesAutoresizingMaskIntoConstraints = NO;
-            [cell.contentView addSubview:toggle];
-            [NSLayoutConstraint activateConstraints:@[
-                [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
-                [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
-            ]];
-        } else if (indexPath.row == 1) {
-            cell.textLabel.text = @"Show tinygrad kernels";
-
-            UISwitch *toggle = self.kernelsSwitch;
-            toggle.translatesAutoresizingMaskIntoConstraints = NO;
-            [cell.contentView addSubview:toggle];
-            [NSLayoutConstraint activateConstraints:@[
-                [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
-                [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
-            ]];
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+        if (!cell) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
         }
-    }
+
+        [cell.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+        cell.textLabel.text = @"";
+        cell.accessoryType = UITableViewCellAccessoryNone;
+
+        if (indexPath.section == 0) {
+            if (indexPath.row == 0) {
+                [cell.contentView addSubview:self.ipLabel];
+                self.ipLabel.frame = CGRectMake(15, 0, CGRectGetWidth(cell.contentView.bounds) - 100, 44);
+
+                UISwitch *toggle = self.remoteSwitch;
+                toggle.translatesAutoresizingMaskIntoConstraints = NO;
+                [cell.contentView addSubview:toggle];
+                [NSLayoutConstraint activateConstraints:@[
+                    [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
+                    [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
+                ]];
+            } else if (indexPath.row == 1) {
+                cell.textLabel.text = @"Show tinygrad kernels";
+
+                UISwitch *toggle = self.kernelsSwitch;
+                toggle.translatesAutoresizingMaskIntoConstraints = NO;
+                [cell.contentView addSubview:toggle];
+                [NSLayoutConstraint activateConstraints:@[
+                    [toggle.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-15],
+                    [toggle.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor]
+                ]];
+            }
+        }
     else if (indexPath.section == 1) {
         if (indexPath.row < self.myKernelNames.count) {
             NSString *kernelName = self.myKernelNames[indexPath.row];
@@ -339,14 +340,6 @@
             [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
         }
     }
-}
-
-- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-    return UIInterfaceOrientationMaskPortrait;
-}
-
-- (BOOL)shouldAutorotate {
-    return NO;
 }
 
 @end
