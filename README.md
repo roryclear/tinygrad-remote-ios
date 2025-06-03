@@ -1,4 +1,5 @@
 # [tinygrad](https://github.com/tinygrad/tinygrad) host for iOS
+## [download from the appstore](https://apps.apple.com/app/tinygrad-remote-host/id6746286914)
 
 Run tinygrad code using your iPhone or iPad's GPU
 
