@@ -256,6 +256,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:values[@"name"][0]]; //ns
                 if([values[@"wait"][0] isEqualToString:@"True"]){
                     const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
                     sendHTTPResponse(handle, time_string, strlen(time_string));
                     return;
                 }
