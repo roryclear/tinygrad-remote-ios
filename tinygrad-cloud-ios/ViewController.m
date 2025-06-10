@@ -14,6 +14,14 @@
 
     [self loadMyKernels];
 
+    self.navigationItem.title = @"tinygrad remote";
+    UIButton *githubButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [githubButton setTitle:@"GitHub" forState:UIControlStateNormal];
+    [githubButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+    [githubButton addTarget:self action:@selector(openGitHub) forControlEvents:UIControlEventTouchUpInside];
+    UIBarButtonItem *githubBarButton = [[UIBarButtonItem alloc] initWithCustomView:githubButton];
+    self.navigationItem.leftBarButtonItem = githubBarButton;
+
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleInsetGrouped];
     self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.tableView.dataSource = self;
@@ -42,6 +50,13 @@
             });
         }
     }];
+}
+
+- (void)openGitHub {
+    NSURL *url = [NSURL URLWithString:@"https://github.com/roryclear/tinygrad-remote-ios"];
+    if ([[UIApplication sharedApplication] canOpenURL:url]) {
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    }
 }
 
 - (NSDictionary *)getMyKernelTimes {
