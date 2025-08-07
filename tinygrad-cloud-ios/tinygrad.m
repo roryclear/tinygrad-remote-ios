@@ -181,7 +181,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     [_q addObject:extractValues([[string_data_content substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
     for (NSMutableDictionary *values in _q) {
         if ([values[@"op"] isEqualToString:@"GetProperties"]) {
-            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False, graph_supports_multi=False, offset_supported=False)";
+            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False, graph_supports_multi=False, offset_supported=False, ib_gid=None)";
             send(handle, response, strlen(response), 0);
             close(handle);
             return;
