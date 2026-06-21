@@ -1,14 +1,17 @@
 # [tinygrad](https://github.com/tinygrad/tinygrad) host for iOS
 ## [download from the appstore](https://apps.apple.com/app/tinygrad-remote-host/id6746286914)
-## last tested with [tinygrad commit 4d821f](https://github.com/tinygrad/tinygrad/commit/4d8d821f568d12db2e34e2e5cfd01659d8533d9a)
 
 Run tinygrad code using your iPhone or iPad's GPU
 
 ## steps
 1. install and open this app on your iPhone or iPad
-2. install [tinygrad](https://github.com/tinygrad/tinygrad) on a computer connected to the same wifi network
+2. clone the ios tinygrad fork:
+   ```
+   git clone -b ios_app https://github.com/roryclear/tinygrad.git
+   ```
+4. install [tinygrad](https://github.com/tinygrad/tinygrad) on a computer connected to the same wifi network
 
-3. run any tinygrad code
+5. run any tinygrad code
 ```sh
 REMOTE=1 HOST={your iphone/ipad IP address}:6667 python3 examples/gpt2.py --model_size=gpt2
 ```
