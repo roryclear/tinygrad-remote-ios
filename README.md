@@ -1,6 +1,6 @@
 # [tinygrad](https://github.com/tinygrad/tinygrad) host for iOS
 ## [download from the appstore](https://apps.apple.com/app/tinygrad-remote-host/id6746286914)
-## last tested with [tinygrad commit c52facf](https://github.com/tinygrad/tinygrad/commit/c52facfd29d446bbd2f1533a66a13eca01f74e5d)
+## last tested with [tinygrad commit 4d821f](https://github.com/tinygrad/tinygrad/commit/4d8d821f568d12db2e34e2e5cfd01659d8533d9a)
 
 Run tinygrad code using your iPhone or iPad's GPU
 
