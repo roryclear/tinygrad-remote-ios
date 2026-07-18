@@ -13,7 +13,7 @@ Run tinygrad code using your iPhone or iPad's GPU
 
 5. run any tinygrad code
 ```sh
-REMOTE=1 HOST={your iphone/ipad IP address}:6667 python3 examples/gpt2.py --model_size=gpt2
+DEV=REMOTE HOST={your iphone/ipad IP address}:6667 python3 examples/gpt2.py --model_size=gpt2
 ```
 
 Also try [YOLOv8 on tinygrad](https://github.com/roryclear/yolov8-tinygrad-ios), by caching tinygrad remote batches, models can be easily ran locally.
