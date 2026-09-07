@@ -221,8 +221,4 @@
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 1;
-}
-
 @end
