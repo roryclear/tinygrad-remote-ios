@@ -225,16 +225,4 @@
     return indexPath.section == 1;
 }
 
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 1) {
-        if (indexPath.row < self.myKernelNames.count) {
-            NSString *kernelName = self.myKernelNames[indexPath.row];
-            [self.myKernels removeObjectForKey:kernelName];
-            [self.myKernelNames removeObjectAtIndex:indexPath.row]; // Remove from ordered list
-            [self saveMyKernels]; // Save after deletion
-            [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
-        }
-    }
-}
-
 @end

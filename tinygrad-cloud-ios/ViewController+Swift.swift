@@ -144,6 +144,16 @@ extension ViewController {
         }
     }
     
-    
+    @objc func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete && indexPath.section == 1 {
+            if indexPath.row < myKernelNames.count {
+                let kernelName = myKernelNames[indexPath.row]
+                myKernels.removeObject(forKey: kernelName)
+                myKernelNames.remove(indexPath.row)
+                saveMyKernels()
+                tableView.deleteRows(at: [indexPath], with: .automatic)
+            }
+        }
+    }
     
 }
