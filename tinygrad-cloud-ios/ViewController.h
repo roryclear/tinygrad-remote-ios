@@ -21,5 +21,6 @@
 - (void)updateIPLabel;
 - (void)saveMyKernels;
 - (void)loadMyKernels;
+- (NSDictionary *)getMyKernelTimes;
 
 @end

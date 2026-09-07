@@ -9,6 +9,22 @@ extension ViewController {
         }
     }
     
+    @objc func getMyKernelTimes() -> [String: NSNumber] {
+        let defaults = UserDefaults.standard
+        var times: [String: NSNumber] = [:]
+        
+        for kernelName in myKernelNames {
+            if let name = kernelName as? String {
+                let timeKey = "\(name)_lastExecutionTime"
+                if let time = defaults.object(forKey: timeKey) as? NSNumber {
+                    times[name] = time
+                }
+            }
+        }
+        
+        return times
+    }
+    
     @objc func showKernelEditor(_ kernelName: String) {
         guard let code = myKernels[kernelName] as? String,
               let navController = navigationController else { return }
@@ -73,5 +89,7 @@ extension ViewController {
             myKernelNames = NSMutableArray(array: myKernels.allKeys)
         }
     }
+    
+    
     
 }

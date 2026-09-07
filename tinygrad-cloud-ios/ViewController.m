@@ -52,21 +52,6 @@
     }];
 }
 
-- (NSDictionary *)getMyKernelTimes {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSMutableDictionary *times = [NSMutableDictionary dictionary];
-    
-    for (NSString *kernelName in self.myKernelNames) {
-        NSString *timeKey = [NSString stringWithFormat:@"%@_lastExecutionTime", kernelName];
-        NSNumber *time = [defaults objectForKey:timeKey];
-        if (time) {
-            times[kernelName] = time;
-        }
-    }
-    
-    return times;
-}
-
 - (void)addCustomKernel {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Custom Kernel"
                                                                    message:@"Enter a name for your new kernel:"
