@@ -25,6 +25,60 @@ extension ViewController {
         return times
     }
     
+    @objc func addCustomKernel() {
+        let alert = UIAlertController(
+            title: "New Custom Kernel",
+            message: "Enter a name for your new kernel:",
+            preferredStyle: .alert
+        )
+        
+        alert.addTextField { textField in
+            textField.placeholder = "Kernel Name"
+            textField.text = String(format: "kernel_%lu", self.myKernels.count + 1)
+        }
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
+        
+        let createAction = UIAlertAction(title: "Create", style: .default) { [weak self] _ in
+            guard let self = self,
+                  let nameTextField = alert.textFields?.first,
+                  let kernelName = nameTextField.text else { return }
+            
+            if !kernelName.isEmpty && !self.myKernels.allKeys.contains(where: { $0 as? String == kernelName }) {
+                // Replace non-alphanumeric characters with underscores
+                let safeKernelName = kernelName.components(separatedBy: CharacterSet.alphanumerics.inverted)
+                    .filter { !$0.isEmpty }
+                    .joined(separator: "_")
+                
+                let defaultCode = """
+                #include <metal_stdlib>
+                using namespace metal;
+                kernel void \(safeKernelName)(uint3 gid [[threadgroup_position_in_grid]], uint3 lid [[thread_position_in_threadgroup]]) {
+                
+                }
+                """
+                
+                self.myKernels[kernelName] = defaultCode
+                self.myKernelNames.add(kernelName) // Add to ordered list
+                self.saveMyKernels() // Save after adding
+                self.showKernelEditor(kernelName)
+            } else {
+                // Handle duplicate or empty name
+                let errorAlert = UIAlertController(
+                    title: "Error",
+                    message: "Kernel name already exists or is empty.",
+                    preferredStyle: .alert
+                )
+                errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                self.present(errorAlert, animated: true, completion: nil)
+            }
+        }
+        
+        alert.addAction(cancelAction)
+        alert.addAction(createAction)
+        present(alert, animated: true, completion: nil)
+    }
+    
     @objc func showKernelEditor(_ kernelName: String) {
         guard let code = myKernels[kernelName] as? String,
               let navController = navigationController else { return }

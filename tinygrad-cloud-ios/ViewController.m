@@ -52,39 +52,6 @@
     }];
 }
 
-- (void)addCustomKernel {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"New Custom Kernel"
-                                                                   message:@"Enter a name for your new kernel:"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = @"Kernel Name";
-        textField.text = [NSString stringWithFormat:@"kernel_%lu", (unsigned long)self.myKernels.count + 1];
-    }];
-    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
-    UIAlertAction *createAction = [UIAlertAction actionWithTitle:@"Create" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        UITextField *nameTextField = alert.textFields.firstObject;
-        NSString *kernelName = nameTextField.text;
-        if (kernelName.length > 0 && ![self.myKernels.allKeys containsObject:kernelName]) {
-            // Replace non-alphanumeric characters with underscores
-            NSString *safeKernelName = [[kernelName componentsSeparatedByCharactersInSet:[[NSCharacterSet alphanumericCharacterSet] invertedSet]] componentsJoinedByString:@"_"];
-            NSString *defaultCode = [NSString stringWithFormat:@"#include <metal_stdlib>\nusing namespace metal;\nkernel void %@(uint3 gid [[threadgroup_position_in_grid]], uint3 lid [[thread_position_in_threadgroup]]) {\n\n}", safeKernelName];
-            self.myKernels[kernelName] = defaultCode;
-            [self.myKernelNames addObject:kernelName]; // Add to ordered list
-            [self saveMyKernels]; // Save after adding
-            [self showKernelEditor:kernelName];
-        } else {
-            // Handle duplicate or empty name
-            UIAlertController *errorAlert = [UIAlertController alertControllerWithTitle:@"Error"
-                                                                                message:@"Kernel name already exists or is empty."
-                                                                         preferredStyle:UIAlertControllerStyleAlert];
-            [errorAlert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [self presentViewController:errorAlert animated:YES completion:nil];
-        }
-    }];
-    [alert addAction:cancelAction];
-    [alert addAction:createAction];
-    [self presentViewController:alert animated:YES completion:nil];
-}
 
 #pragma mark - UITableViewDataSource
 
