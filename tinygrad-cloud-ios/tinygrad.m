@@ -267,5 +267,21 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     sendHTTPResponse(handle, "inf", 3); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
 
+NSArray* get_kernel_keys(void) {
+    return [kernel_keys copy];
+}
+
+NSDictionary* get_kernel_times(void) {
+    return [kernel_times copy];
+}
+
+NSDictionary* get_saved_kernels(void) {
+    return [saved_kernels copy];
+}
+
+BOOL is_save_kernels_enabled(void) {
+    return save_kernels;
+}
+
 @end
 

@@ -159,4 +159,17 @@ extension ViewController {
     @objc func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
         return indexPath.section == 1
     }
+    
+    @objc func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        if section == 0 {
+            return 2
+        }
+        if section == 1 {
+            return myKernelNames.count
+        }
+        if section == 2 && is_save_kernels_enabled() {
+            return get_kernel_keys().count
+        }
+        return 0
+    }
 }

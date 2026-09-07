@@ -59,13 +59,6 @@
     return 3;
 }
 
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 2;
-    if (section == 1) return self.myKernelNames.count; // Use myKernelNames.count
-    if (section == 2 && save_kernels) return [kernel_keys count];
-    return 0;
-}
-
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 1) return @"MY KERNELS";
     if (section == 2 && save_kernels) return @"Tinygrad Kernels";

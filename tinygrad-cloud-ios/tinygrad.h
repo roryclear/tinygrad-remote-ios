@@ -15,6 +15,10 @@ extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints;
 + (void)start;
 + (void)stop;
 + (void)toggleSaveKernels;
+NSArray* get_kernel_keys(void);
+NSDictionary* get_kernel_times(void);
+NSDictionary* get_saved_kernels(void);
+BOOL is_save_kernels_enabled(void);
 @end
 
 NS_ASSUME_NONNULL_END
