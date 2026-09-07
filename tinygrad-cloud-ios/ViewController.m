@@ -52,13 +52,6 @@
     }];
 }
 
-- (void)openGitHub {
-    NSURL *url = [NSURL URLWithString:@"https://github.com/roryclear/tinygrad-remote-ios"];
-    if ([[UIApplication sharedApplication] canOpenURL:url]) {
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-    }
-}
-
 - (NSDictionary *)getMyKernelTimes {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSMutableDictionary *times = [NSMutableDictionary dictionary];
