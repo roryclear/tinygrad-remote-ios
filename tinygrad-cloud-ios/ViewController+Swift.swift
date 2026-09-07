@@ -172,4 +172,10 @@ extension ViewController {
         }
         return 0
     }
+    
+    @objc func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        if section == 1 { return "My Kernels" }
+        if section == 2 && is_save_kernels_enabled() { return "Tinygrad Kernels" }
+        return nil
+    }
 }

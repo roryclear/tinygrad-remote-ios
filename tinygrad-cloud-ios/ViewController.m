@@ -59,12 +59,6 @@
     return 3;
 }
 
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 1) return @"MY KERNELS";
-    if (section == 2 && save_kernels) return @"Tinygrad Kernels";
-    return nil;
-}
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *identifier = @"Cell";
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
