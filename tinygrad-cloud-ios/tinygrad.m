@@ -79,21 +79,6 @@ void toggleSaveKernelsValue(void) {
     return self;
 }
 
-+ (NSString *)getIP {
-    struct ifaddrs *a = 0;
-    getifaddrs(&a);
-    NSString *ip = nil;
-    while (a) {
-        if (a->ifa_addr->sa_family == AF_INET &&
-            [[NSString stringWithUTF8String:a->ifa_name] isEqualToString:@"en0"]) {
-            ip = [NSString stringWithUTF8String:inet_ntoa(((struct sockaddr_in *)a->ifa_addr)->sin_addr)];
-            break;
-        }
-        a = a->ifa_next;
-    }
-    return ip ? [NSString stringWithFormat:@"tinygrad: %@:6667", ip] : @"Waiting for WiFi...";
-}
-
 static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
     char response_header[256];
     snprintf(response_header, sizeof(response_header),
