@@ -10,7 +10,7 @@ static NSMutableDictionary<NSString *, id> *pipeline_states;
 static NSMutableDictionary<NSString *, id> *buffers;
 static NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 static id<MTLCommandQueue> mtl_queue;
-static CFSocketRef _socket;
+CFSocketRef _socket;
 BOOL save_kernels = NO;
 NSMutableArray<NSString *> *kernel_keys = nil;
 NSMutableDictionary<NSString *, id> *saved_kernels = nil;
@@ -19,24 +19,37 @@ NSMutableDictionary<NSString *, id> *kernel_times = nil;
 NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
-static tinygrad *sharedInstance = nil;
+tinygrad *sharedInstance = nil;
 
-@implementation tinygrad
-
-
-+ (void)start {
-    if (!sharedInstance) sharedInstance = [[self alloc] init];
+BOOL hasSharedInstance(void) {
+    return sharedInstance != nil;
 }
 
-+ (void)stop {
+void createSharedInstance(void) {
+    if (!sharedInstance) {
+        sharedInstance = [[tinygrad alloc] init];
+    }
+}
+
+void setSharedInstanceNil(void) {
+    sharedInstance = nil;
+}
+
+void invalidateSocket(void) {
     if (_socket) {
         CFSocketInvalidate(_socket);
         CFRelease(_socket);
         _socket = NULL;
     }
-    sharedInstance = nil;
 }
-+ (void)toggleSaveKernels { save_kernels = !save_kernels;}
+
+void toggleSaveKernelsValue(void) {
+    save_kernels = !save_kernels;
+}
+
+// todo above funcs
+
+@implementation tinygrad
 
 - (instancetype)init {
     self = [super init];
@@ -66,21 +79,6 @@ static tinygrad *sharedInstance = nil;
     return self;
 }
 
-+ (NSString *)getIP {
-    struct ifaddrs *a = 0;
-    getifaddrs(&a);
-    NSString *ip = nil;
-    while (a) {
-        if (a->ifa_addr->sa_family == AF_INET &&
-            [[NSString stringWithUTF8String:a->ifa_name] isEqualToString:@"en0"]) {
-            ip = [NSString stringWithUTF8String:inet_ntoa(((struct sockaddr_in *)a->ifa_addr)->sin_addr)];
-            break;
-        }
-        a = a->ifa_next;
-    }
-    return ip ? [NSString stringWithFormat:@"tinygrad: %@:6667", ip] : @"Waiting for WiFi...";
-}
-
 static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size_t dataSize) {
     char response_header[256];
     snprintf(response_header, sizeof(response_header),
@@ -91,29 +89,6 @@ static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size
     send(handle, response_header, strlen(response_header), 0);
     send(handle, data, dataSize, 0);
     close(handle);
-}
-
-static NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
-    NSMutableDictionary<NSString *, id> *values = [@{@"op": [x componentsSeparatedByString:@"("][0]} mutableCopy];
-    NSDictionary<NSString *, NSString *> *patterns = @{@"name": @"name='([^']+)'",@"datahash": @"datahash='([^']+)'",@"global_sizes": @"global_size=\\(([^)]+)\\)",
-        @"local_sizes": @"local_size=\\(([^)]+)\\)",@"wait": @"wait=(True|False)",@"bufs": @"bufs=\\(([^)]+)\\)",@"vals": @"vals=\\(([^)]+)\\)",
-        @"buffer_num": @"buffer_num=(\\d+)",@"size": @"size=(\\d+)"}; // Changed size pattern to capture only the number
-    [patterns enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSString *pattern, BOOL *stop) {
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:nil];
-        NSTextCheckingResult *match = [regex firstMatchInString:x options:0 range:NSMakeRange(0, x.length)];
-        if (match) {
-            NSString *contents = [x substringWithRange:[match rangeAtIndex:1]];
-            NSMutableArray<NSString *> *extracted_values = [NSMutableArray array];
-            for (NSString *value in [contents componentsSeparatedByString:@","]) {
-                NSString *trimmed_value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                if (trimmed_value.length > 0) {
-                    [extracted_values addObject:trimmed_value];
-                }
-            }
-            values[key] = [extracted_values copy];
-        }
-    }];
-    return values;
 }
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
@@ -175,10 +150,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
     __block NSInteger lastIndex = 0;
     [regex enumerateMatchesInString:string_data_content options:0 range:NSMakeRange(0, string_data_content.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-        [_q addObject:extractValues([[string_data_content substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
+        [_q addObject:[tinygrad extractValues:[[string_data_content substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]]];
         lastIndex = match.range.location;
     }];
-    [_q addObject:extractValues([[string_data_content substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
+    [_q addObject:[tinygrad extractValues:[[string_data_content substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]]]];
     for (NSMutableDictionary *values in _q) {
         if ([values[@"op"] isEqualToString:@"GetProperties"]) {
             char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False, graph_supports_multi=False, offset_supported=False, ib_gid=None)";
