@@ -17,6 +17,6 @@ Also try [YOLOv8 on tinygrad](https://github.com/roryclear/yolov8-tinygrad-ios),
 
 ## notes
 - tinygrad's REMOTE API is not stable, there is no guarantee that this will work on the newest commit on tinygrad master. You may have to checkout an older tinygrad commit (from the date of the latest commit in this repo). PRs welcome.
-- Max allowed app RAM < total RAM. An iPhone 13 (4GB RAM) cannot use over 2GB in a single app for example, it will crash. Each device has its own limit.
+- Max allowed app RAM < total RAM of iOS device.
 - Metal cannot be ran in the background on iOS, the app must be open to run.
 - Modifying one line in tinygrad to send batches on copyin() can increase the amount of memory that can be used, depending on the situation. This needs to be fixed within this app.
