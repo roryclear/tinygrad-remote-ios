@@ -12,9 +12,14 @@ extern NSMutableDictionary<NSString *, id> *kernel_times;
 extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes;
 extern NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints;
 extern tinygrad *sharedInstance;
+extern CFSocketRef _socket;
 
+void setSharedInstanceNil(void);
 BOOL hasSharedInstance(void);
 void createSharedInstance(void);
+void invalidateSocket(void);
+void setSocketNull(void);
+void toggleSaveKernelsValue(void);
 
 @interface tinygrad : NSObject
 + (NSString *)getIP;

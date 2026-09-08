@@ -10,7 +10,7 @@ static NSMutableDictionary<NSString *, id> *pipeline_states;
 static NSMutableDictionary<NSString *, id> *buffers;
 static NSMutableArray<id<MTLCommandBuffer>> *mtl_buffers_in_flight;
 static id<MTLCommandQueue> mtl_queue;
-static CFSocketRef _socket;
+CFSocketRef _socket;
 BOOL save_kernels = NO;
 NSMutableArray<NSString *> *kernel_keys = nil;
 NSMutableDictionary<NSString *, id> *saved_kernels = nil;
@@ -31,17 +31,25 @@ void createSharedInstance(void) {
     }
 }
 
-@implementation tinygrad
+void setSharedInstanceNil(void) {
+    sharedInstance = nil;
+}
 
-+ (void)stop {
+void invalidateSocket(void) {
     if (_socket) {
         CFSocketInvalidate(_socket);
         CFRelease(_socket);
         _socket = NULL;
     }
-    sharedInstance = nil;
 }
-+ (void)toggleSaveKernels { save_kernels = !save_kernels;}
+
+void toggleSaveKernelsValue(void) {
+    save_kernels = !save_kernels;
+}
+
+// todo above funcs
+
+@implementation tinygrad
 
 - (instancetype)init {
     self = [super init];
