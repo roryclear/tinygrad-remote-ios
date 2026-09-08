@@ -19,14 +19,19 @@ NSMutableDictionary<NSString *, id> *kernel_times = nil;
 NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
-static tinygrad *sharedInstance = nil;
+tinygrad *sharedInstance = nil;
+
+BOOL hasSharedInstance(void) {
+    return sharedInstance != nil;
+}
+
+void createSharedInstance(void) {
+    if (!sharedInstance) {
+        sharedInstance = [[tinygrad alloc] init];
+    }
+}
 
 @implementation tinygrad
-
-
-+ (void)start {
-    if (!sharedInstance) sharedInstance = [[self alloc] init];
-}
 
 + (void)stop {
     if (_socket) {
