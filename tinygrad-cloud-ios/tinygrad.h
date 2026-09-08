@@ -25,6 +25,7 @@ void toggleSaveKernelsValue(void);
 + (NSString *)getIP;
 + (void)stop;
 + (void)toggleSaveKernels;
++ (NSMutableDictionary<NSString *, id> *)extractValues:(NSString *)x;
 NSArray* get_kernel_keys(void);
 NSDictionary* get_kernel_times(void);
 NSDictionary* get_saved_kernels(void);

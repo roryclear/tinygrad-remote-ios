@@ -43,4 +43,41 @@ extension tinygrad {
         }
     }
     
+    @objc static func extractValues(_ x: String) -> NSMutableDictionary {
+        let values = NSMutableDictionary()
+        values["op"] = x.components(separatedBy: "(")[0]
+        
+        let patterns: [String: String] = [
+            "name": "name='([^']+)'",
+            "datahash": "datahash='([^']+)'",
+            "global_sizes": "global_size=\\(([^)]+)\\)",
+            "local_sizes": "local_size=\\(([^)]+)\\)",
+            "wait": "wait=(True|False)",
+            "bufs": "bufs=\\(([^)]+)\\)",
+            "vals": "vals=\\(([^)]+)\\)",
+            "buffer_num": "buffer_num=(\\d+)",
+            "size": "size=(\\d+)"
+        ]
+        
+        for (key, pattern) in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+               let match = regex.firstMatch(in: x, options: [], range: NSRange(location: 0, length: x.utf16.count)) {
+                
+                let contents = (x as NSString).substring(with: match.range(at: 1))
+                var extractedValues: [String] = []
+                
+                for value in contents.components(separatedBy: ",") {
+                    let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmedValue.count > 0 {
+                        extractedValues.append(trimmedValue)
+                    }
+                }
+                
+                values[key] = extractedValues
+            }
+        }
+        
+        return values
+    }
+    
 }
