@@ -166,22 +166,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         return;
     }
 
-    NSData *body = [all subdataWithRange:NSMakeRange(header_idx,
-                                                     all.length - header_idx)];
-
-    // --- print body as characters (UTF-8 string) ---
-    NSString *bodyString = [[NSString alloc] initWithData:body
-                                                 encoding:NSUTF8StringEncoding];
-    if (bodyString) {
-        NSLog(@"Received body (string):\n%@", bodyString);
+    NSData *body = [all subdataWithRange:NSMakeRange(header_idx, all.length - header_idx)];
+    NSError *error = nil;
+    NSArray *list = [NSJSONSerialization JSONObjectWithData:body options:0 error:&error];
+    if (list) {
+        NSLog(@"%@", list);
     } else {
-        NSLog(@"Received body is not valid UTF-8, length=%lu bytes",
-              (unsigned long)body.length);
+        NSLog(@"Failed to parse JSON: %@", error);
     }
 
     CFRelease(data);
-
-    // --- send 200 OK ---
     const char *response = "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
                            "Content-Length: 2\r\n"
