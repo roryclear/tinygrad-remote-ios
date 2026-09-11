@@ -173,6 +173,11 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSString *key = item.allKeys.firstObject;
         NSDictionary *value = item[key];
         NSLog(@"key = %@, value = %@", key, value);
+        
+        if ([key isEqualToString:@"buff_alloc"]) {
+            [buffers setObject:[device newBufferWithLength:[value[@"size"] intValue] options:MTLResourceStorageModeShared] forKey:value[@"num"]];
+        }
+        
     }
 
     CFRelease(data);
