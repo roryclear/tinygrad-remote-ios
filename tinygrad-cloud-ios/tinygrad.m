@@ -118,6 +118,82 @@ static NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data_in;
+    struct timeval timeout;
+    timeout.tv_sec = 10;
+    setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+    char buffer[1024 * 500];
+    memset(buffer, 0, sizeof(buffer));
+    CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
+    NSInteger header_idx = -1;
+    NSInteger size = 0;
+    while (1) {
+        ssize_t bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_in <= 0) break;
+        buffer[bytes_in] = '\0';
+        CFDataAppendBytes(data, (UInt8 *)buffer, bytes_in);
+        if (header_idx == -1) {
+            NSData *needle = [@"\r\n\r\n" dataUsingEncoding:NSASCIIStringEncoding];
+            const UInt8 *bytes = CFDataGetBytePtr(data);
+            CFIndex len = CFDataGetLength(data);
+            for (CFIndex i = 0; i <= len - (CFIndex)needle.length; i++) {
+                if (memcmp(bytes + i, needle.bytes, needle.length) == 0) {
+                    header_idx = i + (NSInteger)needle.length;
+                    break;
+                }
+            }
+            if (header_idx != -1) {
+                NSData *headerData = [NSData dataWithBytes:bytes length:header_idx];
+                NSString *headerStr = [[NSString alloc] initWithData:headerData
+                                                        encoding:NSUTF8StringEncoding];
+                for (NSString *line in [headerStr componentsSeparatedByString:@"\r\n"]) {
+                    if ([line.lowercaseString hasPrefix:@"content-length:"]) {
+                        NSString *value = [[line componentsSeparatedByString:@":"] lastObject];
+                        size = [value stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceCharacterSet]].integerValue;
+                        break;
+                    }
+                }
+            }
+        }
+        if (header_idx != -1 && CFDataGetLength(data) >= size + header_idx) break;
+    }
+
+    shutdown(handle, SHUT_RD);
+    NSData *all = (__bridge NSData *)data;
+    if (header_idx == -1 || (NSUInteger)header_idx > all.length) {
+        CFRelease(data);
+        close(handle);
+        return;
+    }
+
+    NSData *body = [all subdataWithRange:NSMakeRange(header_idx,
+                                                     all.length - header_idx)];
+
+    // --- print body as characters (UTF-8 string) ---
+    NSString *bodyString = [[NSString alloc] initWithData:body
+                                                 encoding:NSUTF8StringEncoding];
+    if (bodyString) {
+        NSLog(@"Received body (string):\n%@", bodyString);
+    } else {
+        NSLog(@"Received body is not valid UTF-8, length=%lu bytes",
+              (unsigned long)body.length);
+    }
+
+    CFRelease(data);
+
+    // --- send 200 OK ---
+    const char *response = "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: text/plain\r\n"
+                           "Content-Length: 2\r\n"
+                           "\r\n"
+                           "OK";
+    send(handle, response, strlen(response), 0);
+    close(handle);
+}
+
+/*
+static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
+    CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data_in;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 10;
@@ -266,5 +342,6 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     }
     sendHTTPResponse(handle, "inf", 3); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
 }
+ */
 
 @end
