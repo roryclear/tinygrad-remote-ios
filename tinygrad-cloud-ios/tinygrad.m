@@ -123,6 +123,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     }
     shutdown(handle, SHUT_RD);
     CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
+    run_data(data, handle, size);
+}
+
+static void run_data(CFDataRef data, CFSocketNativeHandle handle, NSInteger size) {
     const UInt8 *bytes = CFDataGetBytePtr(data);
     NSData *range_data = nil;
     NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
