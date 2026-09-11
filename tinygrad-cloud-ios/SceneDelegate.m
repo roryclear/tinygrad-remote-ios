@@ -6,7 +6,7 @@
 //
 
 #import "SceneDelegate.h"
-#import "tinygrad_remote_host-Swift.h"
+#import "ViewController.h"
 
 @interface SceneDelegate ()
 
