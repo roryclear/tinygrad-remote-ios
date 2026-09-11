@@ -169,10 +169,10 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     NSData *body = [all subdataWithRange:NSMakeRange(header_idx, all.length - header_idx)];
     NSError *error = nil;
     NSArray *list = [NSJSONSerialization JSONObjectWithData:body options:0 error:&error];
-    if (list) {
-        NSLog(@"%@", list);
-    } else {
-        NSLog(@"Failed to parse JSON: %@", error);
+    for (NSDictionary *item in list) {
+        NSString *key = item.allKeys.firstObject;
+        NSDictionary *value = item[key];
+        NSLog(@"key = %@, value = %@", key, value);
     }
 
     CFRelease(data);
