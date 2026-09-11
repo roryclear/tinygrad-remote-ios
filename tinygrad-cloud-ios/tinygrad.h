@@ -30,6 +30,13 @@ NSArray* get_kernel_keys(void);
 NSDictionary* get_kernel_times(void);
 NSDictionary* get_saved_kernels(void);
 BOOL is_save_kernels_enabled(void);
+void AcceptCallback(CFSocketRef _Nullable socket,
+                    CFSocketCallBackType type,
+                    CFDataRef _Nullable address,
+                    const void * _Nullable data_in,
+                    void * _Nullable info);
+void setSocket(CFSocketRef socket);
+CFSocketRef getSocket(void);
 @end
 
 NS_ASSUME_NONNULL_END

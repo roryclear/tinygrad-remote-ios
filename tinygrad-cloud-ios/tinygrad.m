@@ -47,6 +47,14 @@ void toggleSaveKernelsValue(void) {
     save_kernels = !save_kernels;
 }
 
+void setSocket(CFSocketRef socket) {
+    _socket = socket;
+}
+
+CFSocketRef getSocket(void) {
+    return _socket;
+}
+
 // todo above funcs
 
 @implementation tinygrad
@@ -66,15 +74,6 @@ void toggleSaveKernelsValue(void) {
         buffer_sizes = [[NSMutableDictionary alloc] init];
         kernel_buffer_sizes = [[NSMutableDictionary alloc] init];
         kernel_buffer_ints = [[NSMutableDictionary alloc] init];
-        
-        _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL);
-        while (!_socket) { sleep(1); _socket = CFSocketCreate(NULL, PF_INET, SOCK_STREAM, IPPROTO_TCP, kCFSocketAcceptCallBack, AcceptCallback, NULL); }
-        struct sockaddr_in address; memset(&address, 0, sizeof(address)); address.sin_len = sizeof(address); address.sin_port = htons(6667); address.sin_addr.s_addr = INADDR_ANY;
-        CFDataRef address_data = CFDataCreate(NULL, (const UInt8 *)&address, sizeof(address));
-        while (CFSocketSetAddress(_socket, address_data) != kCFSocketSuccess) sleep(1);
-        CFRunLoopSourceRef source = CFSocketCreateRunLoopSource(NULL, _socket, 0);
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-        NSLog(@"HTTP Server started on port 6667.");
     }
     return self;
 }
@@ -91,7 +90,7 @@ static void sendHTTPResponse(CFSocketNativeHandle handle, const void *data, size
     close(handle);
 }
 
-static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
+void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data_in;
     char buffer[1024 * 500] = {0};
     struct timeval timeout;

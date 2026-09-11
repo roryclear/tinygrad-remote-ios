@@ -1,18 +1,65 @@
 import Foundation
 
+import Foundation
+
 extension tinygrad {
     @objc static func start() {
         if !hasSharedInstance() {
             createSharedInstance()
         }
+        setupSocket()
     }
-    
+
     @objc static func stop() {
         invalidateSocket()
         setSharedInstanceNil()
     }
-    
+
     @objc static func toggleSaveKernels() { toggleSaveKernelsValue() }
+
+    private static func setupSocket() {
+        var socket: CFSocket?
+
+        while socket == nil {
+            let cb: CFSocketCallBack = { socket, type, address, data, info in
+                AcceptCallback(socket, type, address, data, info)
+            }
+            socket = CFSocketCreate(
+                nil,
+                PF_INET,
+                SOCK_STREAM,
+                IPPROTO_TCP,    
+                CFSocketCallBackType.acceptCallBack.rawValue,
+                cb,
+                nil
+            )
+            if socket == nil { sleep(1) }
+        }
+
+        guard let sock = socket else { return }
+
+        var address = sockaddr_in()
+        memset(&address, 0, MemoryLayout<sockaddr_in>.size)
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_port = CFSwapInt16HostToBig(6667)
+        address.sin_addr.s_addr = INADDR_ANY
+
+        let addressData = CFDataCreate(
+            nil,
+            withUnsafeBytes(of: &address) { $0.bindMemory(to: UInt8.self).baseAddress },
+            MemoryLayout<sockaddr_in>.size
+        )
+
+        while CFSocketSetAddress(sock, addressData) != CFSocketError.success {
+            sleep(1)
+        }
+
+        let source = CFSocketCreateRunLoopSource(nil, sock, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, CFRunLoopMode.commonModes)
+
+        setSocket(sock)
+        NSLog("HTTP Server started on port 6667.")
+    }
     
     @objc static func getIP() -> String {
         var addrPtr: UnsafeMutablePointer<ifaddrs>?
