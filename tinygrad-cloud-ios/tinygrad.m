@@ -196,7 +196,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithData:dispatchData error:&error];
             saved_kernels[name] = library;
-            NSLog(@"here");
+            id<MTLFunction> function = [library newFunctionWithName:name];
+            id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
+            pipeline_states[name] = pipeline;
         }
     }
     CFRelease(data);
