@@ -199,6 +199,19 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             id<MTLFunction> function = [library newFunctionWithName:name];
             id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
             pipeline_states[name] = pipeline;
+        } else if ([key isEqualToString:@"call"]) {
+            NSString *name = value[@"name"];
+            NSArray *buffers = value[@"buffers"];
+            NSArray *buffer_offsets = value[@"buffer_offsets"];
+            NSArray *vals = value[@"vals"];
+            NSArray *local_size = value[@"local_size"];
+            NSArray *global_size = value[@"global_size"];
+            
+            NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
+            if(max_size < [local_size[0] intValue]*[local_size[1] intValue]*[local_size[2] intValue]) {
+                sendHTTPResponse(handle, "inf", 3);
+                return;
+            }
         }
     }
     CFRelease(data);
