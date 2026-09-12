@@ -183,6 +183,19 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             id<MTLBuffer> b = buffers[value[@"dest"]];
             memcpy(b.contents, blobs + [value[@"off"] unsignedLongLongValue], [value[@"len"] unsignedLongLongValue]);
         } else if ([key isEqualToString:@"program"]) {
+            NSString *base64 = value[@"lib"];
+            NSString *name = value[@"name"];
+            NSData *libraryData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+            dispatch_data_t dispatchData =
+                dispatch_data_create(
+                    libraryData.bytes,
+                    libraryData.length,
+                    dispatch_get_main_queue(),
+                    DISPATCH_DATA_DESTRUCTOR_DEFAULT
+                );
+            NSError *error = nil;
+            id<MTLLibrary> library = [device newLibraryWithData:dispatchData error:&error];
+            saved_kernels[name] = library;
             NSLog(@"here");
         }
     }
