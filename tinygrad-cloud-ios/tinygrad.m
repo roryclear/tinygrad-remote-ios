@@ -166,20 +166,26 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         return;
     }
 
-    NSData *body = [all subdataWithRange:NSMakeRange(header_idx, all.length - header_idx)];
-    NSError *error = nil;
-    NSArray *list = [NSJSONSerialization JSONObjectWithData:body options:0 error:&error];
+    const uint8_t *p   = (const uint8_t *)all.bytes + header_idx;
+    NSUInteger     rem = all.length - header_idx;
+    uint32_t meta_len  = 0; memcpy(&meta_len, p, 4); p += 4; rem -= 4;
+
+    NSData *meta = [NSData dataWithBytes:p length:meta_len]; p += meta_len; rem -= meta_len;
+    const uint8_t *blobs = p;
+
+    NSArray *list = [NSJSONSerialization JSONObjectWithData:meta options:0 error:nil];
     for (NSDictionary *item in list) {
         NSString *key = item.allKeys.firstObject;
         NSDictionary *value = item[key];
-        NSLog(@"key = %@, value = %@", key, value);
-        
         if ([key isEqualToString:@"buff_alloc"]) {
             [buffers setObject:[device newBufferWithLength:[value[@"size"] intValue] options:MTLResourceStorageModeShared] forKey:value[@"num"]];
+        } else if ([key isEqualToString:@"copyin"]) {
+            id<MTLBuffer> b = buffers[value[@"dest"]];
+            memcpy(b.contents, blobs + [value[@"off"] unsignedLongLongValue], [value[@"len"] unsignedLongLongValue]);
+        } else if ([key isEqualToString:@"program"]) {
+            NSLog(@"here");
         }
-        
     }
-
     CFRelease(data);
     const char *response = "HTTP/1.1 200 OK\r\n"
                            "Content-Type: text/plain\r\n"
