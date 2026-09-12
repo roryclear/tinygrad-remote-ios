@@ -176,15 +176,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
     NSArray *list = [NSJSONSerialization JSONObjectWithData:meta options:0 error:nil];
     for (NSDictionary *item in list) {
         NSString *key = item.allKeys.firstObject;
-        NSDictionary *value = item[key];
         if ([key isEqualToString:@"buff_alloc"]) {
-            [buffers setObject:[device newBufferWithLength:[value[@"size"] intValue] options:MTLResourceStorageModeShared] forKey:value[@"num"]];
+            [buffers setObject:[device newBufferWithLength:[item[key][@"size"] intValue] options:MTLResourceStorageModeShared] forKey:item[key][@"num"]];
         } else if ([key isEqualToString:@"copyin"]) {
-            id<MTLBuffer> b = buffers[value[@"dest"]];
-            memcpy(b.contents, blobs + [value[@"off"] unsignedLongLongValue], [value[@"len"] unsignedLongLongValue]);
+            id<MTLBuffer> b = buffers[item[key][@"dest"]];
+            memcpy(b.contents, blobs + [item[key][@"off"] unsignedLongLongValue], [item[key][@"len"] unsignedLongLongValue]);
         } else if ([key isEqualToString:@"program"]) {
-            NSString *base64 = value[@"lib"];
-            NSString *name = value[@"name"];
+            NSString *base64 = item[key][@"lib"];
+            NSString *name = item[key][@"name"];
             NSData *libraryData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
             dispatch_data_t dispatchData =
                 dispatch_data_create(
@@ -200,12 +199,12 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
             pipeline_states[name] = pipeline;
         } else if ([key isEqualToString:@"call"]) {
-            NSString *name = value[@"name"];
-            NSArray *kernel_buffers = value[@"buffers"];
-            NSArray *buffer_offsets = value[@"buffer_offsets"];
-            NSArray *vals = value[@"vals"];
-            NSArray *local_sizes = value[@"local_size"];
-            NSArray *global_sizes = value[@"global_size"];
+            NSString *name = item[key][@"name"];
+            NSArray *kernel_buffers = item[key][@"buffers"];
+            NSArray *buffer_offsets = item[key][@"buffer_offsets"];
+            NSArray *vals = item[key][@"vals"];
+            NSArray *local_sizes = item[key][@"local_size"];
+            NSArray *global_sizes = item[key][@"global_size"];
             
             NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
             if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
@@ -233,6 +232,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         } else if ([key isEqualToString:@"copyout"]) {
             for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
             [mtl_buffers_in_flight removeAllObjects];
+            id<MTLBuffer> buffer = buffers[item[key]];
+            sendHTTPResponse(handle, buffer.contents, buffer.length);
+            return;
         }
     }
     CFRelease(data);
