@@ -201,17 +201,38 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             pipeline_states[name] = pipeline;
         } else if ([key isEqualToString:@"call"]) {
             NSString *name = value[@"name"];
-            NSArray *buffers = value[@"buffers"];
+            NSArray *kernel_buffers = value[@"buffers"];
             NSArray *buffer_offsets = value[@"buffer_offsets"];
             NSArray *vals = value[@"vals"];
-            NSArray *local_size = value[@"local_size"];
-            NSArray *global_size = value[@"global_size"];
+            NSArray *local_sizes = value[@"local_size"];
+            NSArray *global_sizes = value[@"global_size"];
             
             NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
-            if(max_size < [local_size[0] intValue]*[local_size[1] intValue]*[local_size[2] intValue]) {
+            if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
                 sendHTTPResponse(handle, "inf", 3);
                 return;
             }
+            
+            id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
+            id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
+            [encoder setComputePipelineState:pipeline_states[name]];
+            for(int i = 0; i < [kernel_buffers count]; i++){
+                [encoder setBuffer:buffers[kernel_buffers[i]] offset:[buffer_offsets[i] intValue] atIndex:i];
+            }
+            for (int i = 0; i < [(NSArray *)vals count]; i++) {
+                NSInteger value = [vals[i] integerValue];
+                [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)kernel_buffers count]];
+            }
+            MTLSize global_size = MTLSizeMake([global_sizes[0] intValue], [global_sizes[1] intValue], [global_sizes[2] intValue]);
+            MTLSize local_size = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
+            [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
+            [encoder endEncoding];
+            [command_buffer commit];
+            // todo wait / BEAM
+            [mtl_buffers_in_flight addObject: command_buffer];
+        } else if ([key isEqualToString:@"copyout"]) {
+            for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
+            [mtl_buffers_in_flight removeAllObjects];
         }
     }
     CFRelease(data);
