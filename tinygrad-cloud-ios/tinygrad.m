@@ -218,9 +218,9 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             for(int i = 0; i < [kernel_buffers count]; i++){
                 [encoder setBuffer:buffers[kernel_buffers[i]] offset:[buffer_offsets[i] intValue] atIndex:i];
             }
-            for (int i = 0; i < [(NSArray *)vals count]; i++) {
-                NSInteger value = [vals[i] integerValue];
-                [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)kernel_buffers count]];
+            for (NSUInteger i = 0; i < [vals count]; i++) {
+                int32_t value = (int32_t)[vals[i] integerValue];
+                [encoder setBytes:&value length:sizeof(int32_t) atIndex:(NSInteger)i + (NSInteger)[kernel_buffers count]];
             }
             MTLSize global_size = MTLSizeMake([global_sizes[0] intValue], [global_sizes[1] intValue], [global_sizes[2] intValue]);
             MTLSize local_size = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
