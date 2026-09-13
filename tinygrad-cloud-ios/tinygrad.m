@@ -178,6 +178,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         NSString *key = item.allKeys.firstObject;
         if ([key isEqualToString:@"buff_alloc"]) {
             [buffers setObject:[device newBufferWithLength:[item[key][@"size"] intValue] options:MTLResourceStorageModeShared] forKey:item[key][@"num"]];
+            if (save_kernels) [buffer_sizes setObject:@([item[key][@"size"] intValue]) forKey:item[key][@"num"]];
         } else if ([key isEqualToString:@"copyin"]) {
             for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
             [mtl_buffers_in_flight removeAllObjects];
@@ -220,14 +221,15 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 sendHTTPResponse(handle, "inf", 3);
                 return;
             }
-            
             id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
             id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
             [encoder setComputePipelineState:pipeline_states[name]];
             for(int i = 0; i < [kernel_buffers count]; i++){
+                if(save_kernels && kernel_buffer_sizes[name].count == i) [kernel_buffer_sizes[name] addObject:buffer_sizes[kernel_buffers[i]]];
                 [encoder setBuffer:buffers[kernel_buffers[i]] offset:[buffer_offsets[i] intValue] atIndex:i];
             }
             for (NSUInteger i = 0; i < [vals count]; i++) {
+                if(save_kernels && kernel_buffer_ints[name].count == i) [kernel_buffer_ints[name] addObject:@([vals[i] integerValue])];
                 int32_t value = (int32_t)[vals[i] integerValue];
                 [encoder setBytes:&value length:sizeof(int32_t) atIndex:(NSInteger)i + (NSInteger)[kernel_buffers count]];
             }
@@ -236,14 +238,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
-            // todo wait / BEAM
-            if (wait) {
+            if (wait || save_kernels) {
                 [command_buffer waitUntilCompleted];
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
-                const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
-                if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
-                sendHTTPResponse(handle, time_string, strlen(time_string));
-                return;
+                [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:name]; //ns
+                if (wait) {
+                    const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
+                    if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
+                    sendHTTPResponse(handle, time_string, strlen(time_string));
+                    return;
+                }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
         } else if ([key isEqualToString:@"copyout"]) {
