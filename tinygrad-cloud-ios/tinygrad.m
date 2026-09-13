@@ -185,6 +185,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             memcpy(b.contents, blobs + [item[key][@"off"] unsignedLongLongValue], [item[key][@"len"] unsignedLongLongValue]);
         } else if ([key isEqualToString:@"program"]) {
             NSString *base64 = item[key][@"lib"];
+            NSString *src = item[key][@"src"];
             NSString *name = item[key][@"name"];
             NSData *libraryData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
             dispatch_data_t dispatchData =
@@ -196,10 +197,16 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 );
             NSError *error = nil;
             id<MTLLibrary> library = [device newLibraryWithData:dispatchData error:&error];
-            saved_kernels[name] = library;
             id<MTLFunction> function = [library newFunctionWithName:name];
             id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
             pipeline_states[name] = pipeline;
+            
+            if(save_kernels){
+                [kernel_keys addObject: name];
+                [saved_kernels setObject:src forKey:name];
+                [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:name];
+                [kernel_buffer_ints setObject:[[NSMutableArray alloc] init] forKey:name];
+            }
         } else if ([key isEqualToString:@"call"]) {
             NSString *name = item[key][@"name"];
             NSArray *kernel_buffers = item[key][@"buffers"];
