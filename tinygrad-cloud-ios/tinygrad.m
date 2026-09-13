@@ -207,6 +207,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             NSArray *vals = item[key][@"vals"];
             NSArray *local_sizes = item[key][@"local_size"];
             NSArray *global_sizes = item[key][@"global_size"];
+            BOOL wait = [item[key][@"wait"] boolValue]; 
             
             NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
             if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
