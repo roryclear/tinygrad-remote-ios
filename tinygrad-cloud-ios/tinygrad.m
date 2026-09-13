@@ -179,6 +179,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
         if ([key isEqualToString:@"buff_alloc"]) {
             [buffers setObject:[device newBufferWithLength:[item[key][@"size"] intValue] options:MTLResourceStorageModeShared] forKey:item[key][@"num"]];
         } else if ([key isEqualToString:@"copyin"]) {
+            for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
+            [mtl_buffers_in_flight removeAllObjects];
             id<MTLBuffer> b = buffers[item[key][@"dest"]];
             memcpy(b.contents, blobs + [item[key][@"off"] unsignedLongLongValue], [item[key][@"len"] unsignedLongLongValue]);
         } else if ([key isEqualToString:@"program"]) {
