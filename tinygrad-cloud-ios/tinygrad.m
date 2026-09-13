@@ -207,8 +207,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             NSArray *vals = item[key][@"vals"];
             NSArray *local_sizes = item[key][@"local_size"];
             NSArray *global_sizes = item[key][@"global_size"];
-            BOOL wait = [item[key][@"wait"] boolValue]; 
-            
+            BOOL wait = [item[key][@"wait"] boolValue];
             NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
             if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
                 sendHTTPResponse(handle, "inf", 3);
@@ -231,6 +230,14 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [encoder endEncoding];
             [command_buffer commit];
             // todo wait / BEAM
+            if (wait) {
+                [command_buffer waitUntilCompleted];
+                float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
+                const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
+                if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
+                sendHTTPResponse(handle, time_string, strlen(time_string));
+                return;
+            }
             [mtl_buffers_in_flight addObject: command_buffer];
         } else if ([key isEqualToString:@"copyout"]) {
             for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
