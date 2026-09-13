@@ -187,7 +187,7 @@
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 1) return @"MY KERNELS";
+    if (section == 1) return @"My Kernels";
     if (section == 2 && save_kernels) return @"Tinygrad Kernels";
     return nil;
 }
