@@ -13,7 +13,7 @@ pip install -e .
 ```
 3. run any tinygrad code
 ```sh
-DEV=IOS IP={your iphone/ipad IP address}:6667 python3.11 examples/gpt2.py --model_size=gpt2
+DEV=IOS IP={your iphone/ipad IP address}:6667 PYTHONPATH=. python3.11 examples/gpt2.py --model_size=gpt2
 ```
 
 Also try [YOLOv8 on tinygrad](https://github.com/roryclear/yolov8-tinygrad-ios), by caching tinygrad remote batches, models can be easily ran locally.
