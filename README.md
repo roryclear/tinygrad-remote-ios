@@ -1,22 +1,23 @@
 # [tinygrad](https://github.com/tinygrad/tinygrad) host for iOS
 ## [download from the appstore](https://apps.apple.com/app/tinygrad-remote-host/id6746286914)
-## last tested with [tinygrad commit c52facf](https://github.com/tinygrad/tinygrad/commit/c52facfd29d446bbd2f1533a66a13eca01f74e5d)
 
 Run tinygrad code using your iPhone or iPad's GPU
 
 ## steps
 1. install and open this app on your iPhone or iPad
-2. install [tinygrad](https://github.com/tinygrad/tinygrad) on a computer connected to the same wifi network
-
+2. install this [tinygrad fork](https://github.com/roryclear/tinygrad) (new_ios branch) on a computer connected to the same wifi network
+```
+git clone -b new_ios https://github.com/roryclear/tinygrad.git
+cd tinygrad
+pip install -e .
+```
 3. run any tinygrad code
 ```sh
-REMOTE=1 HOST={your iphone/ipad IP address}:6667 python3 examples/gpt2.py --model_size=gpt2
+DEV=IOS IP={your iphone/ipad IP address}:6667 python3.11 examples/gpt2.py --model_size=gpt2
 ```
 
 Also try [YOLOv8 on tinygrad](https://github.com/roryclear/yolov8-tinygrad-ios), by caching tinygrad remote batches, models can be easily ran locally.
 
 ## notes
-- tinygrad's REMOTE API is not stable, there is no guarantee that this will work on the newest commit on tinygrad master. You may have to checkout an older tinygrad commit (from the date of the latest commit in this repo). PRs welcome.
 - Max allowed app RAM < total RAM of iOS device.
 - Metal cannot be ran in the background on iOS, the app must be open to run.
-- Modifying one line in tinygrad to send batches on copyin() can increase the amount of memory that can be used, depending on the situation. This needs to be fixed within this app.
