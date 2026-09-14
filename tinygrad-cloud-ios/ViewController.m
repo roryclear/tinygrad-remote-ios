@@ -14,7 +14,7 @@
 
     [self loadMyKernels];
 
-    self.navigationItem.title = @"tinygrad remote";
+    self.navigationItem.title = @"tinygrad mobile";
     UIButton *githubButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [githubButton setTitle:@"GitHub" forState:UIControlStateNormal];
     [githubButton setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
@@ -39,7 +39,7 @@
     [self.kernelsSwitch addTarget:self action:@selector(kernelsToggleChanged:) forControlEvents:UIControlEventValueChanged];
 
     self.ipLabel = [[UILabel alloc] init];
-    self.ipLabel.text = @"Turn on tinygrad remote";
+    self.ipLabel.text = @"Turn on receiver";
     self.ipLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
 
     [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *timer) {
@@ -136,7 +136,7 @@
         [tinygrad stop];
         self.isRemoteEnabled = NO;
         [self.ipTimer invalidate];
-        self.ipLabel.text = @"Turn on tinygrad remote";
+        self.ipLabel.text = @"Turn on tinygrad receiver";
     }
     [self.tableView reloadData];
 }
@@ -187,7 +187,7 @@
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 1) return @"MY KERNELS";
+    if (section == 1) return @"My Kernels";
     if (section == 2 && save_kernels) return @"Tinygrad Kernels";
     return nil;
 }

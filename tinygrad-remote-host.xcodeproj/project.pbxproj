@@ -152,7 +152,7 @@
 				DEVELOPMENT_TEAM = VLS9B5G7MH;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "tinygrad-cloud-ios/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "tinygrad remote host";
+				INFOPLIST_KEY_CFBundleDisplayName = "tinygrad mobile";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -163,7 +163,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "roryclear.tinygrad-cloud-ios";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -186,7 +186,7 @@
 				DEVELOPMENT_TEAM = VLS9B5G7MH;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "tinygrad-cloud-ios/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "tinygrad remote host";
+				INFOPLIST_KEY_CFBundleDisplayName = "tinygrad mobile";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -197,7 +197,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "roryclear.tinygrad-cloud-ios";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

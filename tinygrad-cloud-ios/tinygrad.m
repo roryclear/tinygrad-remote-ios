@@ -1,3 +1,4 @@
+// to be ran with https://github.com/roryclear/tinygrad/tree/new_ios 05ef9db003a681a80e31cfc58f1b61d04e9a537b
 #import "tinygrad.h"
 #import <sys/socket.h>
 #import <netinet/in.h>
@@ -20,6 +21,8 @@ NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
 static tinygrad *sharedInstance = nil;
+static id<MTLCommandBuffer> benchmark_start_buffer = nil;
+float start_time;
 
 @implementation tinygrad
 
@@ -118,143 +121,135 @@ static NSMutableDictionary<NSString *, id> *extractValues(NSString *x) {
 
 static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFDataRef address, const void *data_in, void *info) {
     CFSocketNativeHandle handle = *(CFSocketNativeHandle *)data_in;
-    char buffer[1024 * 500] = {0};
     struct timeval timeout;
     timeout.tv_sec = 10;
     setsockopt(handle, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
-    ssize_t bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
-    buffer[bytes_in] = '\0';
-    CFDataRef data_ref = CFDataCreate(NULL, (UInt8 *)buffer, (CFIndex)bytes_in);
-    CFHTTPMessageRef http_request = CFHTTPMessageCreateEmpty(NULL, TRUE);
-    CFHTTPMessageAppendBytes(http_request, CFDataGetBytePtr(data_ref), CFDataGetLength(data_ref));
-    CFStringRef content_length = CFHTTPMessageCopyHeaderFieldValue(http_request, CFSTR("Content-Length"));
-    NSInteger size = CFStringGetIntValue(content_length);
+    char buffer[1024 * 500];
+    memset(buffer, 0, sizeof(buffer));
     CFMutableDataRef data = CFDataCreateMutable(NULL, 0);
     NSInteger header_idx = -1;
+    NSInteger size = 0;
     while (1) {
+        ssize_t bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
+        if (bytes_in <= 0) break;
+        buffer[bytes_in] = '\0';
         CFDataAppendBytes(data, (UInt8 *)buffer, bytes_in);
         if (header_idx == -1) {
-            CFDataRef h_data = CFStringCreateExternalRepresentation(NULL, CFSTR("\r\n\r\n"), kCFStringEncodingASCII, 0);
-            for (CFIndex i = 0; i <= CFDataGetLength(data) - CFDataGetLength(h_data); i++) {
-                if (memcmp(CFDataGetBytePtr(data) + i, CFDataGetBytePtr(h_data), CFDataGetLength(h_data)) == 0) {
-                    header_idx = i + CFDataGetLength(h_data);
+            NSData *needle = [@"\r\n\r\n" dataUsingEncoding:NSASCIIStringEncoding];
+            const UInt8 *bytes = CFDataGetBytePtr(data);
+            CFIndex len = CFDataGetLength(data);
+            for (CFIndex i = 0; i <= len - (CFIndex)needle.length; i++) {
+                if (memcmp(bytes + i, needle.bytes, needle.length) == 0) {
+                    header_idx = i + (NSInteger)needle.length;
                     break;
                 }
             }
+            if (header_idx != -1) {
+                NSData *headerData = [NSData dataWithBytes:bytes length:header_idx];
+                NSString *headerStr = [[NSString alloc] initWithData:headerData
+                                                        encoding:NSUTF8StringEncoding];
+                for (NSString *line in [headerStr componentsSeparatedByString:@"\r\n"]) {
+                    if ([line.lowercaseString hasPrefix:@"content-length:"]) {
+                        NSString *value = [[line componentsSeparatedByString:@":"] lastObject];
+                        size = [value stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceCharacterSet]].integerValue;
+                        break;
+                    }
+                }
+            }
         }
-        if(CFDataGetLength(data) >= size + header_idx) break;
-        bytes_in = recv(handle, buffer, sizeof(buffer) - 1, 0);
-        if (bytes_in <= 0) break;
+        if (header_idx != -1 && CFDataGetLength(data) >= size + header_idx) break;
     }
-    shutdown(handle, SHUT_RD);
-    CFDataReplaceBytes(data, CFRangeMake(0, CFDataGetLength(data) - size), NULL, 0);
-    const UInt8 *bytes = CFDataGetBytePtr(data);
-    NSData *range_data = nil;
-    NSMutableDictionary *_h = [[NSMutableDictionary alloc] init];
-    NSInteger ptr = 0;
-    NSMutableString *datahash = [NSMutableString stringWithCapacity:0x40];
-    while (ptr < size) {
-        NSData *slicedData = [NSData dataWithBytes:bytes + ptr + 0x20 length:8];
-        uint64_t datalen = 0;
-        [slicedData getBytes:&datalen length:sizeof(datalen)];
-        datalen = CFSwapInt64LittleToHost(datalen);
-        const UInt8 *datahash_bytes = bytes + ptr;
-        datahash = [NSMutableString stringWithCapacity:0x40];
-        for (int i = 0; i < 0x20; i++) {
-            [datahash appendFormat:@"%02x", datahash_bytes[i]];
-        }
-        range_data = [NSData dataWithBytes:bytes + (ptr + 0x28) length:datalen];
-        _h[datahash] = range_data;
-        ptr += 0x28 + datalen;
-    }
-    CFRelease(data);
-    NSString *string_data_content = range_data ? [[NSString alloc] initWithData:range_data encoding:NSUTF8StringEncoding] : @"";
 
-    NSMutableArray *_q = [NSMutableArray array];
-    NSArray *ops = @[@"BufferAlloc", @"BufferFree", @"CopyIn", @"CopyOut", @"ProgramAlloc", @"ProgramFree", @"ProgramExec", @"GetProperties"];
-    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"(%@)\\(", [ops componentsJoinedByString:@"|"]] options:0 error:nil];
-    __block NSInteger lastIndex = 0;
-    [regex enumerateMatchesInString:string_data_content options:0 range:NSMakeRange(0, string_data_content.length) usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags, BOOL *stop) {
-        [_q addObject:extractValues([[string_data_content substringWithRange:NSMakeRange(lastIndex, match.range.location - lastIndex)] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
-        lastIndex = match.range.location;
-    }];
-    [_q addObject:extractValues([[string_data_content substringFromIndex:lastIndex] stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@", "]])];
-    for (NSMutableDictionary *values in _q) {
-        if ([values[@"op"] isEqualToString:@"GetProperties"]) {
-            char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRemoteProperties(real_device='METAL', renderer=('tinygrad.renderer.cstyle', 'MetalRenderer', ()), graph_supported=False, graph_supports_multi=False, offset_supported=False, ib_gid=None)";
-            send(handle, response, strlen(response), 0);
-            close(handle);
-            return;
-        } else if ([values[@"op"] isEqualToString:@"BufferAlloc"]) {
-            [buffers setObject:[device newBufferWithLength:[values[@"size"][0] intValue] options:MTLResourceStorageModeShared] forKey:values[@"buffer_num"][0]];
-            if (save_kernels) [buffer_sizes setObject:@([values[@"size"][0] intValue]) forKey:values[@"buffer_num"][0]];
-        } else if ([values[@"op"] isEqualToString:@"BufferFree"]) {
-            [buffers removeObjectForKey: values[@"buffer_num"][0]];
-        } else if ([values[@"op"] isEqualToString:@"CopyIn"]) {
-            id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
-            NSData *data = _h[values[@"datahash"][0]];
-            memcpy(buffer.contents, data.bytes, data.length);
-        } else if ([values[@"op"] isEqualToString:@"CopyOut"]) {
-            for(int i = 0; i < mtl_buffers_in_flight.count; i++){
-                [mtl_buffers_in_flight[i] waitUntilCompleted];
-            }
+    shutdown(handle, SHUT_RD);
+    NSData *all = (__bridge NSData *)data;
+    if (header_idx == -1 || (NSUInteger)header_idx > all.length) {
+        CFRelease(data);
+        close(handle);
+        return;
+    }
+
+    const uint8_t *p   = (const uint8_t *)all.bytes + header_idx;
+    NSUInteger     rem = all.length - header_idx;
+    uint32_t meta_len  = 0; memcpy(&meta_len, p, 4); p += 4; rem -= 4;
+
+    NSData *meta = [NSData dataWithBytes:p length:meta_len]; p += meta_len; rem -= meta_len;
+    const uint8_t *blobs = p;
+
+    NSArray *list = [NSJSONSerialization JSONObjectWithData:meta options:0 error:nil];
+    for (NSDictionary *item in list) {
+        NSString *key = item.allKeys.firstObject;
+        if ([key isEqualToString:@"buff_alloc"]) {
+            [buffers setObject:[device newBufferWithLength:[item[key][@"size"] intValue] options:MTLResourceStorageModeShared] forKey:item[key][@"num"]];
+            if (save_kernels) [buffer_sizes setObject:@([item[key][@"size"] intValue]) forKey:item[key][@"num"]];
+        } else if ([key isEqualToString:@"copyin"]) {
+            for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
             [mtl_buffers_in_flight removeAllObjects];
-            id<MTLBuffer> buffer = buffers[values[@"buffer_num"][0]];
-            sendHTTPResponse(handle, buffer.contents, buffer.length);
-            return;
-        } else if ([values[@"op"] isEqualToString:@"ProgramAlloc"]) {
-            if ([pipeline_states objectForKey:@[values[@"name"][0],values[@"datahash"][0]]]) continue;
-            NSString *prg = [[NSString alloc] initWithData:_h[values[@"datahash"][0]] encoding:NSUTF8StringEncoding];
-            if(save_kernels){
-                [kernel_keys addObject: values[@"name"][0]];
-                [saved_kernels setObject:prg forKey:values[@"name"][0]];
-                [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
-                [kernel_buffer_ints setObject:[[NSMutableArray alloc] init] forKey:values[@"name"][0]];
-            }
+            id<MTLBuffer> b = buffers[item[key][@"dest"]];
+            memcpy(b.contents, blobs + [item[key][@"off"] unsignedLongLongValue], [item[key][@"len"] unsignedLongLongValue]);
+        } else if ([key isEqualToString:@"program"]) {
+            NSString *base64 = item[key][@"lib"];
+            NSString *src = item[key][@"src"];
+            NSString *name = item[key][@"name"];
+            NSData *libraryData = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+            dispatch_data_t dispatchData =
+                dispatch_data_create(
+                    libraryData.bytes,
+                    libraryData.length,
+                    dispatch_get_main_queue(),
+                    DISPATCH_DATA_DESTRUCTOR_DEFAULT
+                );
             NSError *error = nil;
-            id<MTLLibrary> library = [device newLibraryWithSource:prg options:nil error:&error];
-            MTLComputePipelineDescriptor *descriptor = [[MTLComputePipelineDescriptor alloc] init];
-            descriptor.computeFunction = [library newFunctionWithName:values[@"name"][0]];
-            descriptor.supportIndirectCommandBuffers = YES;
-            MTLComputePipelineReflection *reflection = nil;
-            id<MTLComputePipelineState> pipeline_state = [device newComputePipelineStateWithDescriptor:descriptor options:MTLPipelineOptionNone reflection:&reflection error:&error];
-            if(pipeline_state) [pipeline_states setObject:pipeline_state forKey:@[values[@"name"][0],values[@"datahash"][0]]];
-        } else if ([values[@"op"] isEqualToString:@"ProgramFree"]) {
-            [pipeline_states removeObjectForKey:@[values[@"name"][0],values[@"datahash"][0]]];
-        } else if ([values[@"op"] isEqualToString:@"ProgramExec"]) {
-            if (!pipeline_states[@[values[@"name"][0], values[@"datahash"][0]]]){
-                sendHTTPResponse(handle, "inf", 3);
-                return;
+            id<MTLLibrary> library = [device newLibraryWithData:dispatchData error:&error];
+            id<MTLFunction> function = [library newFunctionWithName:name];
+            id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithFunction:function error:&error];
+            pipeline_states[name] = pipeline;
+            
+            if(save_kernels){
+                [kernel_keys addObject: name];
+                [saved_kernels setObject:src forKey:name];
+                [kernel_buffer_sizes setObject:[[NSMutableArray alloc] init] forKey:name];
+                [kernel_buffer_ints setObject:[[NSMutableArray alloc] init] forKey:name];
             }
-            NSArray *programKey = @[values[@"name"][0],values[@"datahash"][0]];
-            NSInteger max_size = [pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]] maxTotalThreadsPerThreadgroup];
-            if(max_size < [values[@"local_sizes"][0] intValue]*[values[@"local_sizes"][1] intValue]*[values[@"local_sizes"][2] intValue]) {
+        } else if ([key isEqualToString:@"call"]) {
+            NSString *name = item[key][@"name"];
+            NSArray *kernel_buffers = item[key][@"buffers"];
+            NSArray *buffer_offsets = item[key][@"buffer_offsets"];
+            NSArray *vals = item[key][@"vals"];
+            NSArray *local_sizes = item[key][@"local_size"];
+            NSArray *global_sizes = item[key][@"global_size"];
+            BOOL wait = [item[key][@"wait"] boolValue];
+            BOOL benchmark_start = [item[key][@"benchmark_start"] boolValue];
+            BOOL benchmark_end = [item[key][@"benchmark_end"] boolValue];
+            NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
+            if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
                 sendHTTPResponse(handle, "inf", 3);
                 return;
             }
             id<MTLCommandBuffer> command_buffer = [mtl_queue commandBuffer];
             id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-            [encoder setComputePipelineState:pipeline_states[@[values[@"name"][0],values[@"datahash"][0]]]];
-            for(int i = 0; i < [(NSArray *)values[@"bufs"] count]; i++){
-                if(save_kernels && kernel_buffer_sizes[values[@"name"][0]].count == i) [kernel_buffer_sizes[values[@"name"][0]] addObject:buffer_sizes[values[@"bufs"][i]]];
-                [encoder setBuffer:buffers[values[@"bufs"][i]] offset:0 atIndex:i];
+            [encoder setComputePipelineState:pipeline_states[name]];
+            for(int i = 0; i < [kernel_buffers count]; i++){
+                if(save_kernels && kernel_buffer_sizes[name].count == i) [kernel_buffer_sizes[name] addObject:buffer_sizes[kernel_buffers[i]]];
+                [encoder setBuffer:buffers[kernel_buffers[i]] offset:[buffer_offsets[i] intValue] atIndex:i];
             }
-            for (int i = 0; i < [(NSArray *)values[@"vals"] count]; i++) {
-                if(save_kernels && kernel_buffer_ints[values[@"name"][0]].count == i) [kernel_buffer_ints[values[@"name"][0]] addObject:@([values[@"vals"][i] integerValue])];
-                NSInteger value = [values[@"vals"][i] integerValue];
-                [encoder setBytes:&value length:sizeof(NSInteger) atIndex:i + [(NSArray *)values[@"bufs"] count]];
+            for (NSUInteger i = 0; i < [vals count]; i++) {
+                if(save_kernels && kernel_buffer_ints[name].count == i) [kernel_buffer_ints[name] addObject:@([vals[i] integerValue])];
+                int32_t value = (int32_t)[vals[i] integerValue];
+                [encoder setBytes:&value length:sizeof(int32_t) atIndex:(NSInteger)i + (NSInteger)[kernel_buffers count]];
             }
-            MTLSize global_size = MTLSizeMake([values[@"global_sizes"][0] intValue], [values[@"global_sizes"][1] intValue], [values[@"global_sizes"][2] intValue]);
-            MTLSize local_size = MTLSizeMake([values[@"local_sizes"][0] intValue], [values[@"local_sizes"][1] intValue], [values[@"local_sizes"][2] intValue]);
-            if (save_kernels) [kernel_dims setObject:@[@([values[@"global_sizes"][0] intValue]), @([values[@"global_sizes"][1] intValue]), @([values[@"global_sizes"][2] intValue]), @([values[@"local_sizes"][0] intValue]), @([values[@"local_sizes"][1] intValue]), @([values[@"local_sizes"][2] intValue])] forKey:values[@"name"][0]];
+            MTLSize global_size = MTLSizeMake([global_sizes[0] intValue], [global_sizes[1] intValue], [global_sizes[2] intValue]);
+            MTLSize local_size = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
-            if([values[@"wait"][0] isEqualToString:@"True"] || save_kernels) {
+            if (benchmark_start) { benchmark_start_buffer = command_buffer; }
+            if (wait || save_kernels || benchmark_end) {
                 [command_buffer waitUntilCompleted];
+                if (!benchmark_end) benchmark_start_buffer = command_buffer;
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
-                [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:values[@"name"][0]]; //ns
-                if([values[@"wait"][0] isEqualToString:@"True"]){
+                [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:name]; //ns
+                if (wait || benchmark_end) {
                     const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
                     if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
                     sendHTTPResponse(handle, time_string, strlen(time_string));
@@ -262,9 +257,22 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
                 }
             }
             [mtl_buffers_in_flight addObject: command_buffer];
+        } else if ([key isEqualToString:@"copyout"]) {
+            for(int i = 0; i < mtl_buffers_in_flight.count; i++){ [mtl_buffers_in_flight[i] waitUntilCompleted]; }
+            [mtl_buffers_in_flight removeAllObjects];
+            id<MTLBuffer> buffer = buffers[item[key]];
+            sendHTTPResponse(handle, buffer.contents, buffer.length);
+            return;
         }
     }
-    sendHTTPResponse(handle, "inf", 3); // if sending batches on copyin in tinygrad to load larger models, see run times etc.
+    CFRelease(data);
+    const char *response = "HTTP/1.1 200 OK\r\n"
+                           "Content-Type: text/plain\r\n"
+                           "Content-Length: 2\r\n"
+                           "\r\n"
+                           "OK";
+    send(handle, response, strlen(response), 0);
+    close(handle);
 }
 
 @end
