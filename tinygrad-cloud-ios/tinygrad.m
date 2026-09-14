@@ -240,6 +240,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             }
             MTLSize global_size = MTLSizeMake([global_sizes[0] intValue], [global_sizes[1] intValue], [global_sizes[2] intValue]);
             MTLSize local_size = MTLSizeMake([local_sizes[0] intValue], [local_sizes[1] intValue], [local_sizes[2] intValue]);
+            if (save_kernels) [kernel_dims setObject:@[@([global_sizes[0] intValue]), @([global_sizes[1] intValue]), @([global_sizes[2] intValue]), @([local_sizes[0] intValue]), @([local_sizes[1] intValue]), @([local_sizes[2] intValue])] forKey:name];
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
