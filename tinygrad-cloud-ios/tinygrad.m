@@ -21,6 +21,8 @@ NSMutableDictionary<NSString *, id> *buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_sizes = nil;
 NSMutableDictionary<NSString *, NSMutableArray *> *kernel_buffer_ints = nil;
 static tinygrad *sharedInstance = nil;
+static id<MTLCommandBuffer> benchmark_start_buffer = nil;
+float start_time;
 
 @implementation tinygrad
 
@@ -217,6 +219,8 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             NSArray *local_sizes = item[key][@"local_size"];
             NSArray *global_sizes = item[key][@"global_size"];
             BOOL wait = [item[key][@"wait"] boolValue];
+            BOOL benchmark_start = [item[key][@"benchmark_start"] boolValue];
+            BOOL benchmark_end = [item[key][@"benchmark_end"] boolValue];
             NSInteger max_size = [pipeline_states[name] maxTotalThreadsPerThreadgroup];
             if(max_size < [local_sizes[0] intValue]*[local_sizes[1] intValue]*[local_sizes[2] intValue]) {
                 sendHTTPResponse(handle, "inf", 3);
@@ -239,11 +243,13 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             [encoder dispatchThreadgroups:global_size threadsPerThreadgroup:local_size];
             [encoder endEncoding];
             [command_buffer commit];
-            if (wait || save_kernels) {
+            if (benchmark_start) { benchmark_start_buffer = command_buffer; }
+            if (wait || save_kernels || benchmark_end) {
                 [command_buffer waitUntilCompleted];
+                if (!benchmark_end) benchmark_start_buffer = command_buffer;
                 float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
                 [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:name]; //ns
-                if (wait) {
+                if (wait || benchmark_end) {
                     const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
                     if (strcmp(time_string, "inf") == 0) mtl_queue = [device newCommandQueueWithMaxCommandBufferCount:1024];
                     sendHTTPResponse(handle, time_string, strlen(time_string));
