@@ -248,7 +248,7 @@ static void AcceptCallback(CFSocketRef socket, CFSocketCallBackType type, CFData
             if (wait || save_kernels || benchmark_end) {
                 [command_buffer waitUntilCompleted];
                 if (!benchmark_end) benchmark_start_buffer = command_buffer;
-                float time = (float)(command_buffer.GPUEndTime - command_buffer.GPUStartTime);
+                float time = (float)(command_buffer.GPUEndTime - benchmark_start_buffer.GPUStartTime);
                 [kernel_times setObject:@((command_buffer.GPUEndTime - command_buffer.GPUStartTime) * 1e9) forKey:name]; //ns
                 if (wait || benchmark_end) {
                     const char *time_string = (time == 0) ? "inf" : [[NSString stringWithFormat:@"%e", time] UTF8String];
